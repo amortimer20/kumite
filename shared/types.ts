@@ -1,0 +1,88 @@
+export type LessonStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
+
+export interface Student {
+  id: string
+  firstName: string
+  lastName: string
+  email: string | null
+  phone: string | null
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface StudentInput {
+  firstName: string
+  lastName: string
+  email?: string | null
+  phone?: string | null
+  notes?: string | null
+}
+
+export interface Instructor {
+  id: string
+  firstName: string
+  lastName: string
+  email: string | null
+  phone: string | null
+  active: boolean
+  createdAt: string
+}
+
+export interface InstructorInput {
+  firstName: string
+  lastName: string
+  email?: string | null
+  phone?: string | null
+  active?: boolean
+}
+
+export interface Lesson {
+  id: string
+  studentId: string
+  instructorId: string
+  startTime: string
+  endTime: string
+  status: LessonStatus
+  notes: string | null
+  createdAt: string
+  updatedAt: string
+  student: Student
+  instructor: Instructor
+}
+
+export interface LessonInput {
+  studentId: string
+  instructorId: string
+  startTime: string
+  endTime: string
+  notes?: string | null
+}
+
+export interface LessonListFilter {
+  start?: string
+  end?: string
+  instructorId?: string
+}
+
+export interface Api {
+  students: {
+    list(): Promise<Student[]>
+    create(input: StudentInput): Promise<Student>
+    update(id: string, input: Partial<StudentInput>): Promise<Student>
+    delete(id: string): Promise<void>
+  }
+  instructors: {
+    list(): Promise<Instructor[]>
+    create(input: InstructorInput): Promise<Instructor>
+    update(id: string, input: Partial<InstructorInput>): Promise<Instructor>
+    delete(id: string): Promise<void>
+  }
+  lessons: {
+    list(filter?: LessonListFilter): Promise<Lesson[]>
+    create(input: LessonInput): Promise<Lesson>
+    update(id: string, input: Partial<LessonInput>): Promise<Lesson>
+    updateStatus(id: string, status: LessonStatus): Promise<Lesson>
+    delete(id: string): Promise<void>
+  }
+}

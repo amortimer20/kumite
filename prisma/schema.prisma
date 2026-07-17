@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Student {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lessons   Lesson[]
+}
+
+model Instructor {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  lessons   Lesson[]
+}
+
+// SQLite has no native enum support in Prisma, so status is a plain string.
+// Valid values are enforced in application code: "scheduled" | "completed" | "cancelled" | "no_show"
+model Lesson {
+  id           String   @id @default(cuid())
+  student      Student  @relation(fields: [studentId], references: [id])
+  studentId    String
+  instructor   Instructor @relation(fields: [instructorId], references: [id])
+  instructorId String
+  startTime    DateTime
+  endTime      DateTime
+  status       String   @default("scheduled")
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([studentId])
+  @@index([instructorId])
+  @@index([startTime])
+}
