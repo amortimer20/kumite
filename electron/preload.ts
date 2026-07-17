@@ -1,6 +1,7 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type {
   Api,
+  BusinessHoursInput,
   InstructorInput,
   LessonInput,
   LessonListFilter,
@@ -27,6 +28,10 @@ const api: Api = {
     update: (id: string, input: Partial<LessonInput>) => ipcRenderer.invoke('lessons:update', id, input),
     updateStatus: (id: string, status: LessonStatus) => ipcRenderer.invoke('lessons:updateStatus', id, status),
     delete: (id: string) => ipcRenderer.invoke('lessons:delete', id),
+  },
+  businessHours: {
+    list: () => ipcRenderer.invoke('businessHours:list'),
+    update: (dayOfWeek: number, input: BusinessHoursInput) => ipcRenderer.invoke('businessHours:update', dayOfWeek, input),
   },
 }
 

@@ -35,6 +35,15 @@ model Instructor {
   lessons   Lesson[]
 }
 
+// One row per day of week (0 = Sunday ... 6 = Saturday), seeded lazily on first read.
+model BusinessHours {
+  id        String  @id @default(cuid())
+  dayOfWeek Int     @unique
+  isClosed  Boolean @default(false)
+  openTime  String  @default("09:00")
+  closeTime String  @default("20:00")
+}
+
 // SQLite has no native enum support in Prisma, so status is a plain string.
 // Valid values are enforced in application code: "scheduled" | "completed" | "cancelled" | "no_show"
 model Lesson {

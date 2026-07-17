@@ -65,6 +65,20 @@ export interface LessonListFilter {
   instructorId?: string
 }
 
+export interface BusinessHours {
+  id: string
+  dayOfWeek: number
+  isClosed: boolean
+  openTime: string
+  closeTime: string
+}
+
+export interface BusinessHoursInput {
+  isClosed?: boolean
+  openTime?: string
+  closeTime?: string
+}
+
 export interface Api {
   students: {
     list(): Promise<Student[]>
@@ -84,5 +98,9 @@ export interface Api {
     update(id: string, input: Partial<LessonInput>): Promise<Lesson>
     updateStatus(id: string, status: LessonStatus): Promise<Lesson>
     delete(id: string): Promise<void>
+  }
+  businessHours: {
+    list(): Promise<BusinessHours[]>
+    update(dayOfWeek: number, input: BusinessHoursInput): Promise<BusinessHours>
   }
 }
