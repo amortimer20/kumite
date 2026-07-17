@@ -45,6 +45,7 @@ export interface Lesson {
   endTime: string
   status: LessonStatus
   notes: string | null
+  recurringSeriesId: string | null
   createdAt: string
   updatedAt: string
   student: Student
@@ -79,6 +80,15 @@ export interface BusinessHoursInput {
   closeTime?: string
 }
 
+export interface RecurringSeriesInput {
+  studentId: string
+  instructorId: string
+  startDate: string
+  startTime: string
+  endTime: string
+  notes?: string | null
+}
+
 export interface Api {
   students: {
     list(): Promise<Student[]>
@@ -102,5 +112,9 @@ export interface Api {
   businessHours: {
     list(): Promise<BusinessHours[]>
     update(dayOfWeek: number, input: BusinessHoursInput): Promise<BusinessHours>
+  }
+  recurringSeries: {
+    create(input: RecurringSeriesInput): Promise<Lesson[]>
+    endFrom(seriesId: string, fromDateTime: string): Promise<void>
   }
 }

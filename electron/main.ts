@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { registerIpcHandlers } from './ipc/index.ts'
+import { extendAllActiveSeries } from './ipc/recurringSeries.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -64,7 +65,12 @@ app.on('activate', () => {
   }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   registerIpcHandlers()
+  try {
+    await extendAllActiveSeries()
+  } catch (err) {
+    console.error('Failed to extend recurring lesson series:', err)
+  }
   createWindow()
 })

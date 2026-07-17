@@ -13,26 +13,50 @@ datasource db {
 }
 
 model Student {
-  id        String   @id @default(cuid())
-  firstName String
-  lastName  String
-  email     String?
-  phone     String?
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  lessons   Lesson[]
+  id              String            @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  lessons         Lesson[]
+  recurringSeries RecurringSeries[]
 }
 
 model Instructor {
-  id        String   @id @default(cuid())
-  firstName String
-  lastName  String
-  email     String?
-  phone     String?
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  lessons   Lesson[]
+  id              String            @id @default(cuid())
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String?
+  active          Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  lessons         Lesson[]
+  recurringSeries RecurringSeries[]
+}
+
+// A weekly recurring lesson slot. Occurrences are materialized as ordinary
+// Lesson rows (linked via Lesson.recurringSeriesId) on a rolling window,
+// kept extended forward by extendAllActiveSeries() on app startup.
+model RecurringSeries {
+  id             String     @id @default(cuid())
+  student        Student    @relation(fields: [studentId], references: [id])
+  studentId      String
+  instructor     Instructor @relation(fields: [instructorId], references: [id])
+  instructorId   String
+  dayOfWeek      Int
+  startTime      String
+  endTime        String
+  notes          String?
+  active         Boolean    @default(true)
+  generatedUntil DateTime
+  createdAt      DateTime   @default(now())
+  lessons        Lesson[]
+
+  @@index([studentId])
+  @@index([instructorId])
 }
 
 // One row per day of week (0 = Sunday ... 6 = Saturday), seeded lazily on first read.
@@ -47,19 +71,22 @@ model BusinessHours {
 // SQLite has no native enum support in Prisma, so status is a plain string.
 // Valid values are enforced in application code: "scheduled" | "completed" | "cancelled" | "no_show"
 model Lesson {
-  id           String   @id @default(cuid())
-  student      Student  @relation(fields: [studentId], references: [id])
-  studentId    String
-  instructor   Instructor @relation(fields: [instructorId], references: [id])
-  instructorId String
-  startTime    DateTime
-  endTime      DateTime
-  status       String   @default("scheduled")
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                String           @id @default(cuid())
+  student           Student          @relation(fields: [studentId], references: [id])
+  studentId         String
+  instructor        Instructor       @relation(fields: [instructorId], references: [id])
+  instructorId      String
+  startTime         DateTime
+  endTime           DateTime
+  status            String           @default("scheduled")
+  notes             String?
+  recurringSeries   RecurringSeries? @relation(fields: [recurringSeriesId], references: [id])
+  recurringSeriesId String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   @@index([studentId])
   @@index([instructorId])
   @@index([startTime])
+  @@index([recurringSeriesId])
 }

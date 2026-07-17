@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Repeat } from 'lucide-react'
 import { api } from '../api'
 import type { BusinessHours, Instructor, Lesson, LessonStatus, Student } from '../../shared/types'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -90,6 +92,7 @@ export function SchedulePanel() {
   const [startTime, setStartTime] = useState('15:00')
   const [endTime, setEndTime] = useState('15:30')
   const [notes, setNotes] = useState('')
+  const [repeatsWeekly, setRepeatsWeekly] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function refreshLessons() {
@@ -127,14 +130,26 @@ export function SchedulePanel() {
       return
     }
     try {
-      await api.lessons.create({
-        studentId,
-        instructorId,
-        startTime: combineDateAndTime(date, startTime).toISOString(),
-        endTime: combineDateAndTime(date, endTime).toISOString(),
-        notes: notes.trim() || null,
-      })
+      if (repeatsWeekly) {
+        await api.recurringSeries.create({
+          studentId,
+          instructorId,
+          startDate: date,
+          startTime,
+          endTime,
+          notes: notes.trim() || null,
+        })
+      } else {
+        await api.lessons.create({
+          studentId,
+          instructorId,
+          startTime: combineDateAndTime(date, startTime).toISOString(),
+          endTime: combineDateAndTime(date, endTime).toISOString(),
+          notes: notes.trim() || null,
+        })
+      }
       setNotes('')
+      setRepeatsWeekly(false)
       await refreshLessons()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -148,6 +163,12 @@ export function SchedulePanel() {
 
   async function handleDelete(id: string) {
     await api.lessons.delete(id)
+    await refreshLessons()
+  }
+
+  async function handleEndSeries(lesson: Lesson) {
+    if (!lesson.recurringSeriesId) return
+    await api.recurringSeries.endFrom(lesson.recurringSeriesId, lesson.startTime)
     await refreshLessons()
   }
 
@@ -208,6 +229,10 @@ export function SchedulePanel() {
         <span className="text-muted-foreground">to</span>
         <Input type="time" className="w-auto" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
         <Input className="w-48" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox checked={repeatsWeekly} onCheckedChange={(checked) => setRepeatsWeekly(checked === true)} />
+          Repeats weekly
+        </label>
         <Button type="submit">Schedule Lesson</Button>
       </form>
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
@@ -241,7 +266,14 @@ export function SchedulePanel() {
                 <TableCell>
                   {formatTime(new Date(row.lesson.startTime))} – {formatTime(new Date(row.lesson.endTime))}
                 </TableCell>
-                <TableCell>{row.lesson.student.firstName} {row.lesson.student.lastName}</TableCell>
+                <TableCell>
+                  <span className="inline-flex items-center gap-1.5">
+                    {row.lesson.recurringSeriesId && (
+                      <Repeat className="size-3.5 shrink-0 text-muted-foreground" aria-label="Recurring lesson" />
+                    )}
+                    {row.lesson.student.firstName} {row.lesson.student.lastName}
+                  </span>
+                </TableCell>
                 <TableCell>
                   <Select value={row.lesson.status} onValueChange={(v) => handleStatus(row.lesson.id, v as LessonStatus)}>
                     <SelectTrigger className="w-32">
@@ -256,7 +288,12 @@ export function SchedulePanel() {
                 </TableCell>
                 <TableCell>{row.lesson.notes ?? '—'}</TableCell>
                 <TableCell>
-                  <Button variant="outline" size="sm" onClick={() => handleDelete(row.lesson.id)}>Delete</Button>
+                  <div className="flex gap-2">
+                    {row.lesson.recurringSeriesId && (
+                      <Button variant="outline" size="sm" onClick={() => handleEndSeries(row.lesson)}>End series</Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => handleDelete(row.lesson.id)}>Delete</Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ),

@@ -6,6 +6,7 @@ import type {
   LessonInput,
   LessonListFilter,
   LessonStatus,
+  RecurringSeriesInput,
   StudentInput,
 } from '../shared/types.ts'
 
@@ -32,6 +33,10 @@ const api: Api = {
   businessHours: {
     list: () => ipcRenderer.invoke('businessHours:list'),
     update: (dayOfWeek: number, input: BusinessHoursInput) => ipcRenderer.invoke('businessHours:update', dayOfWeek, input),
+  },
+  recurringSeries: {
+    create: (input: RecurringSeriesInput) => ipcRenderer.invoke('recurringSeries:create', input),
+    endFrom: (seriesId: string, fromDateTime: string) => ipcRenderer.invoke('recurringSeries:endFrom', seriesId, fromDateTime),
   },
 }
 

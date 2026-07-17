@@ -4,7 +4,7 @@ import type { LessonInput, LessonListFilter, LessonStatus } from '../../shared/t
 
 const include = { student: true, instructor: true } as const
 
-async function assertNoOverlap(
+export async function assertNoOverlap(
   instructorId: string,
   startTime: Date,
   endTime: Date,
