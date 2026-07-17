@@ -1,11 +1,31 @@
 export type LessonStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
 
+export const STUDENT_RANKS = [
+  'White',
+  'Yellow',
+  'Orange',
+  'Purple',
+  'Blue',
+  'Green',
+  'Brown 3rd',
+  'Brown 2nd',
+  'Brown 1st',
+  'Black',
+] as const
+
+export type StudentRank = (typeof STUDENT_RANKS)[number]
+
 export interface Student {
   id: string
   firstName: string
   lastName: string
   email: string | null
   phone: string | null
+  rank: string | null
+  street: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
   notes: string | null
   createdAt: string
   updatedAt: string
@@ -16,6 +36,11 @@ export interface StudentInput {
   lastName: string
   email?: string | null
   phone?: string | null
+  rank?: string | null
+  street?: string | null
+  city?: string | null
+  state?: string | null
+  zip?: string | null
   notes?: string | null
 }
 

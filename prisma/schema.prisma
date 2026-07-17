@@ -12,12 +12,20 @@ datasource db {
   provider = "sqlite"
 }
 
+// rank is a plain string enforced in application code (SQLite has no native
+// enum support); valid values are the standard belt progression, see
+// STUDENT_RANKS in shared/types.ts.
 model Student {
   id              String            @id @default(cuid())
   firstName       String
   lastName        String
   email           String?
   phone           String?
+  rank            String?
+  street          String?
+  city            String?
+  state           String?
+  zip             String?
   notes           String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
