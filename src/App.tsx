@@ -13,7 +13,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Dojo Scheduler</h1>
+        <h1>Kumite</h1>
         <nav className="tabs">
           {TABS.map((t) => (
             <button
