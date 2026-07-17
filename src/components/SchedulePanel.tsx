@@ -212,52 +212,57 @@ export function SchedulePanel() {
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Schedule</h2>
-      <div className="mb-4 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2">
-          <Label htmlFor="schedule-date">Date</Label>
-          <Input
-            id="schedule-date"
-            type="date"
-            className="w-auto"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <Label>Instructor</Label>
-          <Select value={instructorId} onValueChange={setInstructorId} disabled={instructors.length === 0}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="No instructors yet" />
-            </SelectTrigger>
-            <SelectContent>
-              {instructors.map((i) => (
-                <SelectItem key={i.id} value={i.id}>{i.firstName} {i.lastName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+      <div className="mb-4 rounded-lg border border-border bg-card p-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="schedule-date">Date</Label>
+            <Input
+              id="schedule-date"
+              type="date"
+              className="w-auto"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Label>Instructor</Label>
+            <Select value={instructorId} onValueChange={setInstructorId} disabled={instructors.length === 0}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="No instructors yet" />
+              </SelectTrigger>
+              <SelectContent>
+                {instructors.map((i) => (
+                  <SelectItem key={i.id} value={i.id}>{i.firstName} {i.lastName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
-      <form className="mb-4 flex flex-wrap items-center gap-2" onSubmit={handleSchedule}>
-        <Select value={studentId} onValueChange={setStudentId} disabled={students.length === 0}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="No students yet" />
-          </SelectTrigger>
-          <SelectContent>
-            {students.map((s) => (
-              <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input type="time" className="w-auto" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-        <span className="text-muted-foreground">to</span>
-        <Input type="time" className="w-auto" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-        <Input className="w-48" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Checkbox checked={repeatsWeekly} onCheckedChange={(checked) => setRepeatsWeekly(checked === true)} />
-          Repeats weekly
-        </label>
-        <Button type="submit">Schedule Lesson</Button>
+      <form className="mb-4 rounded-lg border border-border bg-card p-3" onSubmit={handleSchedule}>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={studentId} onValueChange={setStudentId} disabled={students.length === 0}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="No students yet" />
+            </SelectTrigger>
+            <SelectContent>
+              {students.map((s) => (
+                <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input type="time" className="w-auto" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+          <span className="text-muted-foreground">to</span>
+          <Input type="time" className="w-auto" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+          <Input className="w-48" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Checkbox checked={repeatsWeekly} onCheckedChange={(checked) => setRepeatsWeekly(checked === true)} />
+            Repeats weekly
+          </label>
+          <Button type="submit">Schedule Lesson</Button>
+        </div>
       </form>
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
       {hoursForDay?.isClosed && (
