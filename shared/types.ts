@@ -142,4 +142,10 @@ export interface Api {
     create(input: RecurringSeriesInput): Promise<Lesson[]>
     endFrom(seriesId: string, fromDateTime: string): Promise<void>
   }
+  backup: {
+    // Restoring relaunches the app to safely swap the database file, so
+    // there is no success payload beyond confirming it wasn't canceled.
+    create(): Promise<{ canceled: boolean; path?: string }>
+    restore(): Promise<{ canceled: boolean }>
+  }
 }

@@ -38,6 +38,10 @@ const api: Api = {
     create: (input: RecurringSeriesInput) => ipcRenderer.invoke('recurringSeries:create', input),
     endFrom: (seriesId: string, fromDateTime: string) => ipcRenderer.invoke('recurringSeries:endFrom', seriesId, fromDateTime),
   },
+  backup: {
+    create: () => ipcRenderer.invoke('backup:create'),
+    restore: () => ipcRenderer.invoke('backup:restore'),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

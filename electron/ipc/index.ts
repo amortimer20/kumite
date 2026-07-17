@@ -3,6 +3,7 @@ import { registerInstructorHandlers } from './instructors.ts'
 import { registerLessonHandlers } from './lessons.ts'
 import { registerBusinessHoursHandlers } from './businessHours.ts'
 import { registerRecurringSeriesHandlers } from './recurringSeries.ts'
+import { registerBackupHandlers } from './backup.ts'
 
 export function registerIpcHandlers() {
   registerStudentHandlers()
@@ -10,4 +11,5 @@ export function registerIpcHandlers() {
   registerLessonHandlers()
   registerBusinessHoursHandlers()
   registerRecurringSeriesHandlers()
+  registerBackupHandlers()
 }
