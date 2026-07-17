@@ -104,6 +104,24 @@ export async function endRecurringSeriesFrom(seriesId: string, fromDateTime: str
   ])
 }
 
+// Called when a student/instructor is archived (see students.ts / instructors.ts),
+// so their standing recurring lessons stop being extended and generated forever.
+async function endActiveSeriesMatching(where: { studentId?: string; instructorId?: string }) {
+  const seriesList = await prisma.recurringSeries.findMany({ where: { ...where, active: true } })
+  const now = new Date().toISOString()
+  for (const series of seriesList) {
+    await endRecurringSeriesFrom(series.id, now)
+  }
+}
+
+export function endActiveSeriesForStudent(studentId: string) {
+  return endActiveSeriesMatching({ studentId })
+}
+
+export function endActiveSeriesForInstructor(instructorId: string) {
+  return endActiveSeriesMatching({ instructorId })
+}
+
 export function registerRecurringSeriesHandlers() {
   ipcMain.handle('recurringSeries:create', (_event, input: RecurringSeriesInput) => createRecurringSeries(input))
   ipcMain.handle('recurringSeries:endFrom', (_event, seriesId: string, fromDateTime: string) =>

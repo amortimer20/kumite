@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { Prisma } from '../../generated/prisma/client.ts'
 import { prisma } from '../db.ts'
+import { endActiveSeriesForStudent } from './recurringSeries.ts'
 import type { StudentInput } from '../../shared/types.ts'
 
 export function registerStudentHandlers() {
@@ -25,6 +26,7 @@ export function registerStudentHandlers() {
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
         await prisma.student.update({ where: { id }, data: { active: false } })
+        await endActiveSeriesForStudent(id)
         return { archived: true }
       }
       throw err

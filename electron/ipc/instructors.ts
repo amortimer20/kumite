@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { Prisma } from '../../generated/prisma/client.ts'
 import { prisma } from '../db.ts'
+import { endActiveSeriesForInstructor } from './recurringSeries.ts'
 import type { InstructorInput } from '../../shared/types.ts'
 
 export function registerInstructorHandlers() {
@@ -24,6 +25,7 @@ export function registerInstructorHandlers() {
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
         await prisma.instructor.update({ where: { id }, data: { active: false } })
+        await endActiveSeriesForInstructor(id)
         return { archived: true }
       }
       throw err
