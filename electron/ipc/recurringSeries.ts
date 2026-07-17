@@ -68,18 +68,19 @@ export async function createRecurringSeries(input: RecurringSeriesInput) {
         dayOfWeek,
         startTime: input.startTime,
         endTime: input.endTime,
-        notes: input.notes,
         generatedUntil: combineDateAndTime(lastOccurrence, input.startTime),
       },
     })
-    for (const iso of occurrenceDates) {
+    for (const [index, iso] of occurrenceDates.entries()) {
       await tx.lesson.create({
         data: {
           studentId: input.studentId,
           instructorId: input.instructorId,
           startTime: combineDateAndTime(iso, input.startTime),
           endTime: combineDateAndTime(iso, input.endTime),
-          notes: input.notes,
+          // Only the first occurrence gets the note entered at creation time —
+          // notes describe a specific lesson, not the whole series.
+          notes: index === 0 ? input.notes : null,
           recurringSeriesId: series.id,
         },
       })
@@ -140,7 +141,6 @@ export async function extendAllActiveSeries() {
             instructorId: series.instructorId,
             startTime: occStart,
             endTime: occEnd,
-            notes: series.notes,
             recurringSeriesId: series.id,
           },
         })

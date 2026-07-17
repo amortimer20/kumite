@@ -40,6 +40,9 @@ model Instructor {
 // A weekly recurring lesson slot. Occurrences are materialized as ordinary
 // Lesson rows (linked via Lesson.recurringSeriesId) on a rolling window,
 // kept extended forward by extendAllActiveSeries() on app startup.
+// Notes are intentionally not stored here: they're specific to a single
+// lesson, not the series, so only the first generated occurrence gets the
+// note entered at creation time and every later one starts blank.
 model RecurringSeries {
   id             String     @id @default(cuid())
   student        Student    @relation(fields: [studentId], references: [id])
@@ -49,7 +52,6 @@ model RecurringSeries {
   dayOfWeek      Int
   startTime      String
   endTime        String
-  notes          String?
   active         Boolean    @default(true)
   generatedUntil DateTime
   createdAt      DateTime   @default(now())

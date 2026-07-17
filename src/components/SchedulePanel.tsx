@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Repeat } from 'lucide-react'
 import { api } from '../api'
 import type { BusinessHours, Instructor, Lesson, LessonStatus, Student } from '../../shared/types'
@@ -95,6 +95,10 @@ export function SchedulePanel() {
   const [repeatsWeekly, setRepeatsWeekly] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
+  const [notesDraft, setNotesDraft] = useState('')
+  const skipNextBlurSaveRef = useRef(false)
+
   async function refreshLessons() {
     if (!instructorId) {
       setLessons([])
@@ -169,6 +173,26 @@ export function SchedulePanel() {
   async function handleEndSeries(lesson: Lesson) {
     if (!lesson.recurringSeriesId) return
     await api.recurringSeries.endFrom(lesson.recurringSeriesId, lesson.startTime)
+    await refreshLessons()
+  }
+
+  function startEditingNotes(lesson: Lesson) {
+    setEditingNotesId(lesson.id)
+    setNotesDraft(lesson.notes ?? '')
+  }
+
+  function cancelEditingNotes() {
+    skipNextBlurSaveRef.current = true
+    setEditingNotesId(null)
+  }
+
+  async function saveNotes(id: string) {
+    if (skipNextBlurSaveRef.current) {
+      skipNextBlurSaveRef.current = false
+      return
+    }
+    setEditingNotesId(null)
+    await api.lessons.update(id, { notes: notesDraft.trim() || null })
     await refreshLessons()
   }
 
@@ -286,7 +310,39 @@ export function SchedulePanel() {
                     </SelectContent>
                   </Select>
                 </TableCell>
-                <TableCell>{row.lesson.notes ?? '—'}</TableCell>
+                <TableCell>
+                  {editingNotesId === row.lesson.id ? (
+                    <Input
+                      autoFocus
+                      className="h-7 w-40"
+                      value={notesDraft}
+                      onChange={(e) => setNotesDraft(e.target.value)}
+                      onBlur={() => saveNotes(row.lesson.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          saveNotes(row.lesson.id)
+                        }
+                        if (e.key === 'Escape') {
+                          e.preventDefault()
+                          cancelEditingNotes()
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      className="cursor-pointer hover:underline"
+                      onClick={() => startEditingNotes(row.lesson)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') startEditingNotes(row.lesson)
+                      }}
+                    >
+                      {row.lesson.notes || <span className="italic text-muted-foreground">Add note</span>}
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell>
                   <div className="flex gap-2">
                     {row.lesson.recurringSeriesId && (
