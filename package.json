@@ -11,7 +11,9 @@
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "npm rebuild better-sqlite3; node prisma/seed.ts; electron-rebuild -f -w better-sqlite3",
+    "db:clear": "npm rebuild better-sqlite3; node prisma/clear.ts; electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.8.0",
