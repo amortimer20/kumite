@@ -3,6 +3,7 @@ import './App.css'
 import { StudentsPanel } from './components/StudentsPanel'
 import { InstructorsPanel } from './components/InstructorsPanel'
 import { SchedulePanel } from './components/SchedulePanel'
+import { Button } from '@/components/ui/button'
 
 const TABS = ['Schedule', 'Students', 'Instructors'] as const
 type Tab = (typeof TABS)[number]
@@ -14,15 +15,15 @@ function App() {
     <div className="app">
       <header className="app-header">
         <h1>Kumite</h1>
-        <nav className="tabs">
+        <nav className="flex gap-2">
           {TABS.map((t) => (
-            <button
+            <Button
               key={t}
-              className={t === tab ? 'tab active' : 'tab'}
+              variant={t === tab ? 'default' : 'ghost'}
               onClick={() => setTab(t)}
             >
               {t}
-            </button>
+            </Button>
           ))}
         </nav>
       </header>

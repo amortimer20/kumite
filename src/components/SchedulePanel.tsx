@@ -1,6 +1,24 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Instructor, Lesson, LessonStatus, Student } from '../../shared/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 function todayIsoDate() {
   const now = new Date()
@@ -92,72 +110,93 @@ export function SchedulePanel() {
 
   return (
     <div className="panel">
-      <h2>Schedule</h2>
-      <div className="schedule-date">
-        <label>
-          Date{' '}
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </label>
+      <h2 className="mb-3 text-lg font-semibold">Schedule</h2>
+      <div className="mb-4 flex items-center gap-2">
+        <Label htmlFor="schedule-date">Date</Label>
+        <Input
+          id="schedule-date"
+          type="date"
+          className="w-auto"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
       </div>
 
-      <form className="inline-form" onSubmit={handleSchedule}>
-        <select value={studentId} onChange={(e) => setStudentId(e.target.value)}>
-          {students.length === 0 && <option value="">No students yet</option>}
-          {students.map((s) => (
-            <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>
-          ))}
-        </select>
-        <select value={instructorId} onChange={(e) => setInstructorId(e.target.value)}>
-          {instructors.length === 0 && <option value="">No instructors yet</option>}
-          {instructors.map((i) => (
-            <option key={i.id} value={i.id}>{i.firstName} {i.lastName}</option>
-          ))}
-        </select>
-        <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-        <span>to</span>
-        <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-        <input placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        <button type="submit">Schedule Lesson</button>
+      <form className="mb-4 flex flex-wrap items-center gap-2" onSubmit={handleSchedule}>
+        <Select value={studentId} onValueChange={setStudentId} disabled={students.length === 0}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="No students yet" />
+          </SelectTrigger>
+          <SelectContent>
+            {students.map((s) => (
+              <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={instructorId} onValueChange={setInstructorId} disabled={instructors.length === 0}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="No instructors yet" />
+          </SelectTrigger>
+          <SelectContent>
+            {instructors.map((i) => (
+              <SelectItem key={i.id} value={i.id}>{i.firstName} {i.lastName}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input type="time" className="w-auto" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+        <span className="text-muted-foreground">to</span>
+        <Input type="time" className="w-auto" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+        <Input className="w-48" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        <Button type="submit">Schedule Lesson</Button>
       </form>
-      {error && <p className="error">{error}</p>}
+      {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
 
-      <table>
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th>Student</th>
-            <th>Instructor</th>
-            <th>Status</th>
-            <th>Notes</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Time</TableHead>
+            <TableHead>Student</TableHead>
+            <TableHead>Instructor</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Notes</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {lessons.map((l) => (
-            <tr key={l.id} className={l.status === 'cancelled' ? 'cancelled-row' : ''}>
-              <td>
+            <TableRow key={l.id} className={l.status === 'cancelled' ? 'cancelled-row' : ''}>
+              <TableCell>
                 {new Date(l.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 {' – '}
                 {new Date(l.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </td>
-              <td>{l.student.firstName} {l.student.lastName}</td>
-              <td>{l.instructor.firstName} {l.instructor.lastName}</td>
-              <td>
-                <select value={l.status} onChange={(e) => handleStatus(l.id, e.target.value as LessonStatus)}>
-                  {Object.entries(STATUS_LABEL).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </td>
-              <td>{l.notes ?? '—'}</td>
-              <td><button onClick={() => handleDelete(l.id)}>Delete</button></td>
-            </tr>
+              </TableCell>
+              <TableCell>{l.student.firstName} {l.student.lastName}</TableCell>
+              <TableCell>{l.instructor.firstName} {l.instructor.lastName}</TableCell>
+              <TableCell>
+                <Select value={l.status} onValueChange={(v) => handleStatus(l.id, v as LessonStatus)}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(STATUS_LABEL).map(([value, label]) => (
+                      <SelectItem key={value} value={value}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </TableCell>
+              <TableCell>{l.notes ?? '—'}</TableCell>
+              <TableCell>
+                <Button variant="outline" size="sm" onClick={() => handleDelete(l.id)}>Delete</Button>
+              </TableCell>
+            </TableRow>
           ))}
           {lessons.length === 0 && (
-            <tr><td colSpan={6} className="empty">No lessons scheduled for this day.</td></tr>
+            <TableRow>
+              <TableCell colSpan={6} className="text-center italic text-muted-foreground">No lessons scheduled for this day.</TableCell>
+            </TableRow>
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Student } from '../../shared/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 export function StudentsPanel() {
   const [students, setStudents] = useState<Student[]>([])
@@ -49,38 +59,42 @@ export function StudentsPanel() {
 
   return (
     <div className="panel">
-      <h2>Students</h2>
-      <form className="inline-form" onSubmit={handleAdd}>
-        <input placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-        <input placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-        <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <button type="submit">Add Student</button>
+      <h2 className="mb-3 text-lg font-semibold">Students</h2>
+      <form className="mb-4 flex flex-wrap items-center gap-2" onSubmit={handleAdd}>
+        <Input className="w-40" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        <Input className="w-40" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+        <Input className="w-48" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input className="w-36" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <Button type="submit">Add Student</Button>
       </form>
-      {error && <p className="error">{error}</p>}
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Phone</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {students.map((s) => (
-            <tr key={s.id}>
-              <td>{s.firstName} {s.lastName}</td>
-              <td>{s.email ?? '—'}</td>
-              <td>{s.phone ?? '—'}</td>
-              <td><button onClick={() => handleDelete(s.id)}>Delete</button></td>
-            </tr>
+            <TableRow key={s.id}>
+              <TableCell>{s.firstName} {s.lastName}</TableCell>
+              <TableCell>{s.email ?? '—'}</TableCell>
+              <TableCell>{s.phone ?? '—'}</TableCell>
+              <TableCell>
+                <Button variant="outline" size="sm" onClick={() => handleDelete(s.id)}>Delete</Button>
+              </TableCell>
+            </TableRow>
           ))}
           {students.length === 0 && (
-            <tr><td colSpan={4} className="empty">No students yet.</td></tr>
+            <TableRow>
+              <TableCell colSpan={4} className="text-center italic text-muted-foreground">No students yet.</TableCell>
+            </TableRow>
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }

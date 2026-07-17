@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Instructor } from '../../shared/types'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 
 export function InstructorsPanel() {
   const [instructors, setInstructors] = useState<Instructor[]>([])
@@ -49,38 +59,42 @@ export function InstructorsPanel() {
 
   return (
     <div className="panel">
-      <h2>Instructors</h2>
-      <form className="inline-form" onSubmit={handleAdd}>
-        <input placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-        <input placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
-        <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        <input placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <button type="submit">Add Instructor</button>
+      <h2 className="mb-3 text-lg font-semibold">Instructors</h2>
+      <form className="mb-4 flex flex-wrap items-center gap-2" onSubmit={handleAdd}>
+        <Input className="w-40" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        <Input className="w-40" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+        <Input className="w-48" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input className="w-36" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <Button type="submit">Add Instructor</Button>
       </form>
-      {error && <p className="error">{error}</p>}
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
+      {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Phone</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {instructors.map((i) => (
-            <tr key={i.id}>
-              <td>{i.firstName} {i.lastName}</td>
-              <td>{i.email ?? '—'}</td>
-              <td>{i.phone ?? '—'}</td>
-              <td><button onClick={() => handleDelete(i.id)}>Delete</button></td>
-            </tr>
+            <TableRow key={i.id}>
+              <TableCell>{i.firstName} {i.lastName}</TableCell>
+              <TableCell>{i.email ?? '—'}</TableCell>
+              <TableCell>{i.phone ?? '—'}</TableCell>
+              <TableCell>
+                <Button variant="outline" size="sm" onClick={() => handleDelete(i.id)}>Delete</Button>
+              </TableCell>
+            </TableRow>
           ))}
           {instructors.length === 0 && (
-            <tr><td colSpan={4} className="empty">No instructors yet.</td></tr>
+            <TableRow>
+              <TableCell colSpan={4} className="text-center italic text-muted-foreground">No instructors yet.</TableCell>
+            </TableRow>
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   )
 }
