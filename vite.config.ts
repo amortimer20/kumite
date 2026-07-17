@@ -11,6 +11,17 @@ export default defineConfig({
       main: {
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              // better-sqlite3 (and its native-binding locator `bindings`) must stay
+              // a real runtime `require`, not get bundled: `bindings` is CJS code
+              // that relies on `__filename`, which doesn't exist once inlined into
+              // this ESM bundle.
+              external: ['better-sqlite3', '@prisma/adapter-better-sqlite3'],
+            },
+          },
+        },
       },
       preload: {
         // Shortcut of `build.rollupOptions.input`.
