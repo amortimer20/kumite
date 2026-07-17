@@ -111,8 +111,10 @@ export function SchedulePanel() {
   }
 
   useEffect(() => {
-    api.students.list().then(setStudents)
-    api.instructors.list().then(setInstructors)
+    // Archived students/instructors are kept out of scheduling entirely —
+    // they're only reachable via the "Show archived" toggle in their panels.
+    api.students.list().then((list) => setStudents(list.filter((s) => s.active)))
+    api.instructors.list().then((list) => setInstructors(list.filter((i) => i.active)))
     api.businessHours.list().then(setBusinessHours)
   }, [])
 

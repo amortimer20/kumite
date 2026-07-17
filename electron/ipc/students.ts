@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { Prisma } from '../../generated/prisma/client.ts'
 import { prisma } from '../db.ts'
 import type { StudentInput } from '../../shared/types.ts'
 
@@ -15,7 +16,18 @@ export function registerStudentHandlers() {
     return prisma.student.update({ where: { id }, data: input })
   })
 
+  // A student with any lesson history can't be hard-deleted (foreign key), so
+  // that case falls back to archiving them instead, keeping history intact.
   ipcMain.handle('students:delete', async (_event, id: string) => {
-    await prisma.student.delete({ where: { id } })
+    try {
+      await prisma.student.delete({ where: { id } })
+      return { archived: false }
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        await prisma.student.update({ where: { id }, data: { active: false } })
+        return { archived: true }
+      }
+      throw err
+    }
   })
 }

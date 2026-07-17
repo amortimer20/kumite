@@ -27,6 +27,7 @@ export interface Student {
   state: string | null
   zip: string | null
   notes: string | null
+  active: boolean
   createdAt: string
   updatedAt: string
 }
@@ -42,6 +43,7 @@ export interface StudentInput {
   state?: string | null
   zip?: string | null
   notes?: string | null
+  active?: boolean
 }
 
 export interface Instructor {
@@ -119,13 +121,15 @@ export interface Api {
     list(): Promise<Student[]>
     create(input: StudentInput): Promise<Student>
     update(id: string, input: Partial<StudentInput>): Promise<Student>
-    delete(id: string): Promise<void>
+    // Deleting a student with lesson history isn't possible (foreign key),
+    // so this archives them instead; archived: true tells the UI which happened.
+    delete(id: string): Promise<{ archived: boolean }>
   }
   instructors: {
     list(): Promise<Instructor[]>
     create(input: InstructorInput): Promise<Instructor>
     update(id: string, input: Partial<InstructorInput>): Promise<Instructor>
-    delete(id: string): Promise<void>
+    delete(id: string): Promise<{ archived: boolean }>
   }
   lessons: {
     list(filter?: LessonListFilter): Promise<Lesson[]>

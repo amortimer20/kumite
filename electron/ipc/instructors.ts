@@ -1,4 +1,5 @@
 import { ipcMain } from 'electron'
+import { Prisma } from '../../generated/prisma/client.ts'
 import { prisma } from '../db.ts'
 import type { InstructorInput } from '../../shared/types.ts'
 
@@ -15,7 +16,17 @@ export function registerInstructorHandlers() {
     return prisma.instructor.update({ where: { id }, data: input })
   })
 
+  // Same archive-on-delete fallback as students:delete, see comment there.
   ipcMain.handle('instructors:delete', async (_event, id: string) => {
-    await prisma.instructor.delete({ where: { id } })
+    try {
+      await prisma.instructor.delete({ where: { id } })
+      return { archived: false }
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+        await prisma.instructor.update({ where: { id }, data: { active: false } })
+        return { archived: true }
+      }
+      throw err
+    }
   })
 }

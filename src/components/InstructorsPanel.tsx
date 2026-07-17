@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { Instructor } from '../../shared/types'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import {
   Table,
@@ -19,6 +20,9 @@ export function InstructorsPanel() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
+
+  const [showArchived, setShowArchived] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
 
   async function refresh() {
     setInstructors(await api.instructors.list())
@@ -52,8 +56,17 @@ export function InstructorsPanel() {
     }
   }
 
-  async function handleDelete(id: string) {
-    await api.instructors.delete(id)
+  async function handleDelete(instructor: Instructor) {
+    setNotice(null)
+    const { archived } = await api.instructors.delete(instructor.id)
+    if (archived) {
+      setNotice(`${instructor.firstName} ${instructor.lastName} has lesson history, so they were archived instead of deleted.`)
+    }
+    await refresh()
+  }
+
+  async function handleReactivate(id: string) {
+    await api.instructors.update(id, { active: true })
     await refresh()
   }
 
@@ -68,6 +81,11 @@ export function InstructorsPanel() {
         <Button type="submit">Add Instructor</Button>
       </form>
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+      {notice && <p className="mb-4 text-sm text-muted-foreground">{notice}</p>}
+      <label className="mb-3 flex w-fit items-center gap-2 text-sm text-muted-foreground">
+        <Checkbox checked={showArchived} onCheckedChange={(checked) => setShowArchived(checked === true)} />
+        Show archived
+      </label>
       <Table>
         <TableHeader>
           <TableRow>
@@ -78,17 +96,26 @@ export function InstructorsPanel() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {instructors.map((i) => (
-            <TableRow key={i.id}>
-              <TableCell>{i.firstName} {i.lastName}</TableCell>
-              <TableCell>{i.email ?? '—'}</TableCell>
-              <TableCell>{i.phone ?? '—'}</TableCell>
-              <TableCell>
-                <Button variant="outline" size="sm" onClick={() => handleDelete(i.id)}>Delete</Button>
-              </TableCell>
-            </TableRow>
-          ))}
-          {instructors.length === 0 && (
+          {instructors
+            .filter((i) => showArchived || i.active)
+            .map((i) => (
+              <TableRow key={i.id}>
+                <TableCell>
+                  {i.firstName} {i.lastName}
+                  {!i.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
+                </TableCell>
+                <TableCell>{i.email ?? '—'}</TableCell>
+                <TableCell>{i.phone ?? '—'}</TableCell>
+                <TableCell>
+                  {i.active ? (
+                    <Button variant="outline" size="sm" onClick={() => handleDelete(i)}>Delete</Button>
+                  ) : (
+                    <Button variant="outline" size="sm" onClick={() => handleReactivate(i.id)}>Reactivate</Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          {instructors.filter((i) => showArchived || i.active).length === 0 && (
             <TableRow>
               <TableCell colSpan={4} className="text-center italic text-muted-foreground">No instructors yet.</TableCell>
             </TableRow>

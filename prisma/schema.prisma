@@ -27,6 +27,10 @@ model Student {
   state           String?
   zip             String?
   notes           String?
+  // Deleting a student with lesson history violates the Lesson/RecurringSeries
+  // foreign key, so "delete" falls back to archiving (active: false) instead —
+  // this keeps them out of scheduling pickers while preserving history.
+  active          Boolean           @default(true)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   lessons         Lesson[]
@@ -39,6 +43,7 @@ model Instructor {
   lastName        String
   email           String?
   phone           String?
+  // Same archive-on-delete fallback as Student.active, see comment there.
   active          Boolean           @default(true)
   createdAt       DateTime          @default(now())
   lessons         Lesson[]
