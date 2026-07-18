@@ -30,6 +30,7 @@ export interface Student {
   active: boolean
   createdAt: string
   updatedAt: string
+  familyMembers: FamilyMember[]
 }
 
 export interface StudentInput {
@@ -44,6 +45,22 @@ export interface StudentInput {
   zip?: string | null
   notes?: string | null
   active?: boolean
+}
+
+// Not independently schedulable — tracked alongside a primary Student record
+// (e.g. for certificates), never referenced by Lesson/RecurringSeries directly.
+export interface FamilyMember {
+  id: string
+  studentId: string
+  firstName: string
+  lastName: string
+  rank: string | null
+}
+
+export interface FamilyMemberInput {
+  firstName: string
+  lastName: string
+  rank?: string | null
 }
 
 export interface Instructor {
@@ -151,5 +168,10 @@ export interface Api {
     // there is no success payload beyond confirming it wasn't canceled.
     create(): Promise<{ canceled: boolean; path?: string }>
     restore(): Promise<{ canceled: boolean }>
+  }
+  familyMembers: {
+    create(studentId: string, input: FamilyMemberInput): Promise<FamilyMember>
+    update(id: string, input: Partial<FamilyMemberInput>): Promise<FamilyMember>
+    delete(id: string): Promise<void>
   }
 }

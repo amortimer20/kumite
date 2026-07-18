@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
-import type { Student, StudentInput } from '../../shared/types'
+import type { FamilyMemberInput, Student, StudentInput } from '../../shared/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -29,6 +29,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+
+const EMPTY_FAMILY_FORM: FamilyMemberInput = { firstName: '', lastName: '', rank: null }
 
 const EMPTY_FORM: StudentInput = {
   firstName: '',
@@ -85,11 +87,20 @@ export function StudentsPanel() {
   const [editForm, setEditForm] = useState<StudentInput>(EMPTY_FORM)
   const [editError, setEditError] = useState<string | null>(null)
 
+  const [familyForm, setFamilyForm] = useState<FamilyMemberInput>(EMPTY_FAMILY_FORM)
+  const [familyError, setFamilyError] = useState<string | null>(null)
+  // Same Radix Select reset-on-undefined issue as addFormKey above.
+  const [familyFormKey, setFamilyFormKey] = useState(0)
+
   const [showArchived, setShowArchived] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   async function refresh() {
-    setStudents(await api.students.list())
+    const updated = await api.students.list()
+    setStudents(updated)
+    // Keeps the open edit dialog's family member list current after any
+    // family-member mutation, which refetches through this same function.
+    setEditingStudent((prev) => (prev ? (updated.find((s) => s.id === prev.id) ?? null) : prev))
   }
 
   useEffect(() => {
@@ -131,6 +142,8 @@ export function StudentsPanel() {
     setEditingStudent(student)
     setEditForm(toFormValues(student))
     setEditError(null)
+    setFamilyForm(EMPTY_FAMILY_FORM)
+    setFamilyError(null)
   }
 
   async function handleSaveEdit(e: React.FormEvent) {
@@ -148,6 +161,38 @@ export function StudentsPanel() {
     } catch (err) {
       setEditError(err instanceof Error ? err.message : String(err))
     }
+  }
+
+  async function handleAddFamilyMember(e: React.FormEvent) {
+    e.preventDefault()
+    if (!editingStudent) return
+    setFamilyError(null)
+    if (!familyForm.firstName.trim() || !familyForm.lastName.trim()) {
+      setFamilyError('First and last name are required.')
+      return
+    }
+    try {
+      await api.familyMembers.create(editingStudent.id, {
+        firstName: familyForm.firstName.trim(),
+        lastName: familyForm.lastName.trim(),
+        rank: familyForm.rank,
+      })
+      setFamilyForm(EMPTY_FAMILY_FORM)
+      setFamilyFormKey((k) => k + 1)
+      await refresh()
+    } catch (err) {
+      setFamilyError(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  async function handleFamilyMemberRankChange(id: string, rank: string) {
+    await api.familyMembers.update(id, { rank })
+    await refresh()
+  }
+
+  async function handleDeleteFamilyMember(id: string) {
+    await api.familyMembers.delete(id)
+    await refresh()
   }
 
   return (
@@ -332,7 +377,7 @@ export function StudentsPanel() {
             <div>
               <Label className="mb-1">Notes</Label>
               <Textarea
-                placeholder="Family members, etc."
+                placeholder="Additional notes"
                 value={editForm.notes ?? ''}
                 onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
               />
@@ -345,6 +390,62 @@ export function StudentsPanel() {
               <Button type="submit">Save</Button>
             </DialogFooter>
           </form>
+
+          <div className="mt-2 border-t border-border pt-3">
+            <Label className="mb-2">Family Members</Label>
+            <div className="flex flex-col gap-2">
+              {editingStudent?.familyMembers.map((fm) => (
+                <div key={fm.id} className="flex items-center gap-2">
+                  <span className="flex-1 text-sm">{fm.firstName} {fm.lastName}</span>
+                  <Select value={fm.rank ?? undefined} onValueChange={(v) => handleFamilyMemberRankChange(fm.id, v)}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue placeholder="Rank" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STUDENT_RANKS.map((rank) => (
+                        <SelectItem key={rank} value={rank}>{rank}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={() => handleDeleteFamilyMember(fm.id)}>Delete</Button>
+                </div>
+              ))}
+              {editingStudent?.familyMembers.length === 0 && (
+                <p className="text-sm italic text-muted-foreground">No family members added.</p>
+              )}
+            </div>
+
+            <form className="mt-2 flex items-center gap-2" onSubmit={handleAddFamilyMember}>
+              <Input
+                className="flex-1"
+                placeholder="First name"
+                value={familyForm.firstName}
+                onChange={(e) => setFamilyForm((f) => ({ ...f, firstName: e.target.value }))}
+              />
+              <Input
+                className="flex-1"
+                placeholder="Last name"
+                value={familyForm.lastName}
+                onChange={(e) => setFamilyForm((f) => ({ ...f, lastName: e.target.value }))}
+              />
+              <Select
+                key={familyFormKey}
+                value={familyForm.rank ?? undefined}
+                onValueChange={(v) => setFamilyForm((f) => ({ ...f, rank: v }))}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Rank" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STUDENT_RANKS.map((rank) => (
+                    <SelectItem key={rank} value={rank}>{rank}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button type="submit" variant="outline" size="sm">Add</Button>
+            </form>
+            {familyError && <p className="mt-1 text-sm text-destructive">{familyError}</p>}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

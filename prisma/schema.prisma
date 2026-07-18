@@ -35,6 +35,21 @@ model Student {
   updatedAt       DateTime          @updatedAt
   lessons         Lesson[]
   recurringSeries RecurringSeries[]
+  familyMembers   FamilyMember[]
+}
+
+// A named, ranked household member tracked alongside a primary Student record
+// (e.g. for certificates), but not independently schedulable — lessons are
+// always booked under the primary Student, never a FamilyMember directly.
+model FamilyMember {
+  id        String  @id @default(cuid())
+  firstName String
+  lastName  String
+  rank      String?
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId String
+
+  @@index([studentId])
 }
 
 model Instructor {

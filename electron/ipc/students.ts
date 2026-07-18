@@ -4,17 +4,24 @@ import { prisma } from '../db.ts'
 import { endActiveSeriesForStudent } from './recurringSeries.ts'
 import type { StudentInput } from '../../shared/types.ts'
 
+const familyMembersInclude: Prisma.StudentInclude = {
+  familyMembers: { orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] },
+}
+
 export function registerStudentHandlers() {
   ipcMain.handle('students:list', async () => {
-    return prisma.student.findMany({ orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }] })
+    return prisma.student.findMany({
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      include: familyMembersInclude,
+    })
   })
 
   ipcMain.handle('students:create', async (_event, input: StudentInput) => {
-    return prisma.student.create({ data: input })
+    return prisma.student.create({ data: input, include: familyMembersInclude })
   })
 
   ipcMain.handle('students:update', async (_event, id: string, input: Partial<StudentInput>) => {
-    return prisma.student.update({ where: { id }, data: input })
+    return prisma.student.update({ where: { id }, data: input, include: familyMembersInclude })
   })
 
   // A student with any lesson history can't be hard-deleted (foreign key), so

@@ -59,7 +59,16 @@ async function main() {
     prisma.lesson.create({ data: { studentId: noah.id, instructorId: jordan.id, startTime: daysFromNowAt(-1, 16), endTime: daysFromNowAt(-1, 16, 30), status: 'no_show' } }),
   ])
 
-  console.log(`Seeded ${students.length} students (1 archived) and 2 instructors, with 7 sample lessons.`)
+  // A few family members — trained-but-not-independently-schedulable household
+  // members tracked under a primary student's contact record.
+  const familyMembers = await Promise.all([
+    prisma.familyMember.create({ data: { studentId: maya.id, firstName: 'Jake', lastName: 'Chen', rank: 'Yellow' } }),
+    prisma.familyMember.create({ data: { studentId: liam.id, firstName: 'Priya', lastName: 'Patel', rank: 'White' } }),
+    prisma.familyMember.create({ data: { studentId: noah.id, firstName: 'Ella', lastName: 'Kim', rank: 'Orange' } }),
+    prisma.familyMember.create({ data: { studentId: noah.id, firstName: 'Mia', lastName: 'Kim', rank: 'White' } }),
+  ])
+
+  console.log(`Seeded ${students.length} students (1 archived) and 2 instructors, with 7 sample lessons and ${familyMembers.length} family members.`)
 }
 
 main()
