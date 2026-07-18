@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
-import type { FamilyMemberInput, Student, StudentInput } from '../../shared/types'
+import type { FamilyMember, FamilyMemberInput, Student, StudentInput } from '../../shared/types'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -125,6 +125,11 @@ export function StudentsPanel() {
   }
 
   async function handleDelete(student: Student) {
+    const confirmed = window.confirm(
+      `Delete ${student.firstName} ${student.lastName}? If they have lesson history they'll be archived instead — otherwise this cannot be undone.`,
+    )
+    if (!confirmed) return
+
     setNotice(null)
     const { archived } = await api.students.delete(student.id)
     if (archived) {
@@ -190,8 +195,13 @@ export function StudentsPanel() {
     await refresh()
   }
 
-  async function handleDeleteFamilyMember(id: string) {
-    await api.familyMembers.delete(id)
+  async function handleDeleteFamilyMember(familyMember: FamilyMember) {
+    const confirmed = window.confirm(
+      `Delete ${familyMember.firstName} ${familyMember.lastName}? This cannot be undone.`,
+    )
+    if (!confirmed) return
+
+    await api.familyMembers.delete(familyMember.id)
     await refresh()
   }
 
@@ -407,7 +417,7 @@ export function StudentsPanel() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button variant="outline" size="sm" onClick={() => handleDeleteFamilyMember(fm.id)}>Delete</Button>
+                  <Button variant="outline" size="sm" onClick={() => handleDeleteFamilyMember(fm)}>Delete</Button>
                 </div>
               ))}
               {editingStudent?.familyMembers.length === 0 && (

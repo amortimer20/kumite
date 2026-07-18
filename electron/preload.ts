@@ -38,7 +38,7 @@ const api: Api = {
   },
   recurringSeries: {
     create: (input: RecurringSeriesInput) => ipcRenderer.invoke('recurringSeries:create', input),
-    endFrom: (seriesId: string, fromDateTime: string) => ipcRenderer.invoke('recurringSeries:endFrom', seriesId, fromDateTime),
+    deleteFrom: (seriesId: string, fromDateTime: string) => ipcRenderer.invoke('recurringSeries:deleteFrom', seriesId, fromDateTime),
   },
   backup: {
     create: () => ipcRenderer.invoke('backup:create'),

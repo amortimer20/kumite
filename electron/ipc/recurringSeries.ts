@@ -93,6 +93,9 @@ export async function createRecurringSeries(input: RecurringSeriesInput) {
   })
 }
 
+// Used when a student/instructor is archived (see endActiveSeriesMatching
+// below) — that's not a delete, so affected lessons are marked cancelled
+// rather than removed, preserving a "why did this disappear" trail.
 export async function endRecurringSeriesFrom(seriesId: string, fromDateTime: string) {
   const cutoff = new Date(fromDateTime)
   await prisma.$transaction([
@@ -100,6 +103,25 @@ export async function endRecurringSeriesFrom(seriesId: string, fromDateTime: str
     prisma.lesson.updateMany({
       where: { recurringSeriesId: seriesId, startTime: { gte: cutoff } },
       data: { status: 'cancelled' },
+    }),
+  ])
+}
+
+// Used when the user explicitly deletes a recurring lesson "and all future
+// lessons" from the Schedule tab. Unlike endRecurringSeriesFrom, this is a
+// genuine delete since that's the actual intent — lessons that already have
+// a real recorded outcome (completed/no_show) are excluded even if they
+// somehow fall in the range, since destroying attendance history isn't.
+export async function deleteRecurringSeriesFrom(seriesId: string, fromDateTime: string) {
+  const cutoff = new Date(fromDateTime)
+  await prisma.$transaction([
+    prisma.recurringSeries.update({ where: { id: seriesId }, data: { active: false } }),
+    prisma.lesson.deleteMany({
+      where: {
+        recurringSeriesId: seriesId,
+        startTime: { gte: cutoff },
+        status: { notIn: ['completed', 'no_show'] },
+      },
     }),
   ])
 }
@@ -124,8 +146,8 @@ export function endActiveSeriesForInstructor(instructorId: string) {
 
 export function registerRecurringSeriesHandlers() {
   ipcMain.handle('recurringSeries:create', (_event, input: RecurringSeriesInput) => createRecurringSeries(input))
-  ipcMain.handle('recurringSeries:endFrom', (_event, seriesId: string, fromDateTime: string) =>
-    endRecurringSeriesFrom(seriesId, fromDateTime),
+  ipcMain.handle('recurringSeries:deleteFrom', (_event, seriesId: string, fromDateTime: string) =>
+    deleteRecurringSeriesFrom(seriesId, fromDateTime),
   )
 }
 

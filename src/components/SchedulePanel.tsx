@@ -21,6 +21,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 function todayIsoDate() {
   const now = new Date()
@@ -99,6 +106,11 @@ export function SchedulePanel() {
   const [notesDraft, setNotesDraft] = useState('')
   const skipNextBlurSaveRef = useRef(false)
 
+  // Deleting a one-off lesson happens immediately (routine, low-stakes,
+  // frequent — matches how calendar apps treat single events). A recurring
+  // lesson opens this modal instead, since "delete" is ambiguous there.
+  const [deleteModalLesson, setDeleteModalLesson] = useState<Lesson | null>(null)
+
   async function refreshLessons() {
     if (!instructorId) {
       setLessons([])
@@ -172,9 +184,24 @@ export function SchedulePanel() {
     await refreshLessons()
   }
 
-  async function handleEndSeries(lesson: Lesson) {
-    if (!lesson.recurringSeriesId) return
-    await api.recurringSeries.endFrom(lesson.recurringSeriesId, lesson.startTime)
+  function handleDeleteClick(lesson: Lesson) {
+    if (lesson.recurringSeriesId) {
+      setDeleteModalLesson(lesson)
+    } else {
+      handleDelete(lesson.id)
+    }
+  }
+
+  async function handleDeleteJustThisLesson() {
+    if (!deleteModalLesson) return
+    await handleDelete(deleteModalLesson.id)
+    setDeleteModalLesson(null)
+  }
+
+  async function handleDeleteThisAndFutureLessons() {
+    if (!deleteModalLesson?.recurringSeriesId) return
+    await api.recurringSeries.deleteFrom(deleteModalLesson.recurringSeriesId, deleteModalLesson.startTime)
+    setDeleteModalLesson(null)
     await refreshLessons()
   }
 
@@ -351,12 +378,7 @@ export function SchedulePanel() {
                   )}
                 </TableCell>
                 <TableCell>
-                  <div className="flex gap-2">
-                    {row.lesson.recurringSeriesId && (
-                      <Button variant="outline" size="sm" onClick={() => handleEndSeries(row.lesson)}>End series</Button>
-                    )}
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(row.lesson.id)}>Delete</Button>
-                  </div>
+                  <Button variant="outline" size="sm" onClick={() => handleDeleteClick(row.lesson)}>Delete</Button>
                 </TableCell>
               </TableRow>
             ),
@@ -368,6 +390,22 @@ export function SchedulePanel() {
           )}
         </TableBody>
       </Table>
+
+      <Dialog open={deleteModalLesson !== null} onOpenChange={(open) => !open && setDeleteModalLesson(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete recurring lesson</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This lesson is part of a weekly series. What would you like to delete?
+          </p>
+          <DialogFooter className="sm:flex-col sm:gap-2">
+            <Button variant="outline" onClick={handleDeleteJustThisLesson}>Just this lesson</Button>
+            <Button variant="outline" onClick={handleDeleteThisAndFutureLessons}>This and all future lessons</Button>
+            <Button variant="ghost" onClick={() => setDeleteModalLesson(null)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

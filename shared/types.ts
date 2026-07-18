@@ -168,7 +168,9 @@ export interface Api {
   }
   recurringSeries: {
     create(input: RecurringSeriesInput): Promise<Lesson[]>
-    endFrom(seriesId: string, fromDateTime: string): Promise<void>
+    // Deletes this and all future not-yet-occurred lessons in the series
+    // (completed/no_show lessons are left untouched) and deactivates it.
+    deleteFrom(seriesId: string, fromDateTime: string): Promise<void>
   }
   backup: {
     // Restoring relaunches the app to safely swap the database file, so
