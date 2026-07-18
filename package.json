@@ -13,7 +13,8 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:seed": "npm rebuild better-sqlite3; node prisma/seed.ts; electron-rebuild -f -w better-sqlite3",
-    "db:clear": "npm rebuild better-sqlite3; node prisma/clear.ts; electron-rebuild -f -w better-sqlite3"
+    "db:clear": "npm rebuild better-sqlite3; node prisma/clear.ts; electron-rebuild -f -w better-sqlite3",
+    "certificate:calibrate": "node scripts/certificate-calibrate.ts"
   },
   "dependencies": {
     "@prisma/adapter-better-sqlite3": "^7.8.0",
@@ -23,6 +24,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.24.0",
+    "pdf-lib": "^1.17.1",
     "radix-ui": "^1.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

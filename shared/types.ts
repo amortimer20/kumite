@@ -124,6 +124,13 @@ export interface BusinessHoursInput {
   closeTime?: string
 }
 
+export interface CertificateInput {
+  name: string
+  rank: string
+  // ISO yyyy-mm-dd
+  date: string
+}
+
 export interface RecurringSeriesInput {
   studentId: string
   instructorId: string
@@ -173,5 +180,13 @@ export interface Api {
     create(studentId: string, input: FamilyMemberInput): Promise<FamilyMember>
     update(id: string, input: Partial<FamilyMemberInput>): Promise<FamilyMember>
     delete(id: string): Promise<void>
+  }
+  certificates: {
+    // Ranks with no template available (e.g. White) are simply absent.
+    listAvailableRanks(): Promise<string[]>
+    // Opens the generated certificate in the OS's default PDF viewer —
+    // printing from there is a normal action in that app, not something
+    // triggered directly by Kumite.
+    print(input: CertificateInput): Promise<void>
   }
 }

@@ -5,6 +5,7 @@ import { registerBusinessHoursHandlers } from './businessHours.ts'
 import { registerRecurringSeriesHandlers } from './recurringSeries.ts'
 import { registerBackupHandlers } from './backup.ts'
 import { registerFamilyMemberHandlers } from './familyMembers.ts'
+import { registerCertificateHandlers } from './certificates.ts'
 
 export function registerIpcHandlers() {
   registerStudentHandlers()
@@ -14,4 +15,5 @@ export function registerIpcHandlers() {
   registerRecurringSeriesHandlers()
   registerBackupHandlers()
   registerFamilyMemberHandlers()
+  registerCertificateHandlers()
 }

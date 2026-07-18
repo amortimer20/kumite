@@ -4,9 +4,10 @@ import { StudentsPanel } from './components/StudentsPanel'
 import { InstructorsPanel } from './components/InstructorsPanel'
 import { SchedulePanel } from './components/SchedulePanel'
 import { SettingsPanel } from './components/SettingsPanel'
+import { CertificatesPanel } from './components/CertificatesPanel'
 import { Button } from '@/components/ui/button'
 
-const TABS = ['Schedule', 'Students', 'Instructors', 'Settings'] as const
+const TABS = ['Schedule', 'Students', 'Instructors', 'Certificates', 'Settings'] as const
 type Tab = (typeof TABS)[number]
 
 function App() {
@@ -32,6 +33,7 @@ function App() {
         {tab === 'Schedule' && <SchedulePanel />}
         {tab === 'Students' && <StudentsPanel />}
         {tab === 'Instructors' && <InstructorsPanel />}
+        {tab === 'Certificates' && <CertificatesPanel />}
         {tab === 'Settings' && <SettingsPanel />}
       </main>
     </div>

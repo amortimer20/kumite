@@ -2,6 +2,7 @@ import { ipcRenderer, contextBridge } from 'electron'
 import type {
   Api,
   BusinessHoursInput,
+  CertificateInput,
   FamilyMemberInput,
   InstructorInput,
   LessonInput,
@@ -47,6 +48,10 @@ const api: Api = {
     create: (studentId: string, input: FamilyMemberInput) => ipcRenderer.invoke('familyMembers:create', studentId, input),
     update: (id: string, input: Partial<FamilyMemberInput>) => ipcRenderer.invoke('familyMembers:update', id, input),
     delete: (id: string) => ipcRenderer.invoke('familyMembers:delete', id),
+  },
+  certificates: {
+    listAvailableRanks: () => ipcRenderer.invoke('certificates:listAvailableRanks'),
+    print: (input: CertificateInput) => ipcRenderer.invoke('certificates:print', input),
   },
 }
 

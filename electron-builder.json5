@@ -11,6 +11,12 @@
     "dist",
     "dist-electron"
   ],
+  "extraResources": [
+    {
+      "from": "electron/certificates/templates",
+      "to": "certificates"
+    }
+  ],
   "mac": {
     "target": [
       "dmg"
