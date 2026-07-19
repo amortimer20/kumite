@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Repeat } from 'lucide-react'
+import { Repeat, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import type { BusinessHours, Instructor, Lesson, LessonStatus, Student } from '../../shared/types'
 import { TableSkeletonRows } from './TableSkeletonRows'
+import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -103,6 +104,11 @@ function buildScheduleRows(dayStart: Date, dayEnd: Date, lessons: Lesson[]): Sch
 export function SchedulePanel() {
   const [date, setDate] = useState(todayIsoDate())
   const [lessons, setLessons] = useState<Lesson[]>([])
+  // The date `lessons` was actually fetched for — kept separate from `date`
+  // so a date change doesn't plot stale lessons against the new day's grid
+  // before the fetch for that day resolves.
+  const [lessonsDate, setLessonsDate] = useState(date)
+  const lessonsRequestIdRef = useRef(0)
   const [students, setStudents] = useState<Student[]>([])
   const [instructors, setInstructors] = useState<Instructor[]>([])
   const [businessHours, setBusinessHours] = useState<BusinessHours[]>([])
@@ -115,6 +121,11 @@ export function SchedulePanel() {
   const [repeatsWeekly, setRepeatsWeekly] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lessonsLoading, setLessonsLoading] = useState(true)
+  const [hasLoadedLessons, setHasLoadedLessons] = useState(false)
+  // Only the very first load shows a skeleton — once we have lessons on
+  // screen, a date/instructor change just swaps them in place rather than
+  // blanking the table, so switching dates doesn't flicker.
+  const showLessonsSkeleton = useDelayedFlag(lessonsLoading && !hasLoadedLessons)
 
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState('')
@@ -126,19 +137,27 @@ export function SchedulePanel() {
   const [deleteModalLesson, setDeleteModalLesson] = useState<Lesson | null>(null)
 
   async function refreshLessons() {
+    const requestId = ++lessonsRequestIdRef.current
     if (!instructorId) {
       setLessons([])
+      setLessonsDate(date)
       setLessonsLoading(false)
+      setHasLoadedLessons(true)
       return
     }
     setLessonsLoading(true)
+    const requestedDate = date
     const { start, end } = dayBounds(date)
     try {
-      setLessons(
-        await api.lessons.list({ instructorId, start: start.toISOString(), end: end.toISOString() }),
-      )
+      const result = await api.lessons.list({ instructorId, start: start.toISOString(), end: end.toISOString() })
+      if (requestId !== lessonsRequestIdRef.current) return // a newer request already landed
+      setLessons(result)
+      setLessonsDate(requestedDate)
     } finally {
-      setLessonsLoading(false)
+      if (requestId === lessonsRequestIdRef.current) {
+        setLessonsLoading(false)
+        setHasLoadedLessons(true)
+      }
     }
   }
 
@@ -248,12 +267,15 @@ export function SchedulePanel() {
     await refreshLessons()
   }
 
+  // Used for the "closed" banner, which should react to the calendar
+  // selection immediately rather than waiting on lessonsDate to catch up.
   const hoursForDay = businessHours.find((h) => h.dayOfWeek === dayOfWeekFromIsoDate(date))
+  const lessonsDayHours = businessHours.find((h) => h.dayOfWeek === dayOfWeekFromIsoDate(lessonsDate))
   const scheduleRows =
-    hoursForDay && !hoursForDay.isClosed
+    lessonsDayHours && !lessonsDayHours.isClosed
       ? buildScheduleRows(
-          combineDateAndTime(date, hoursForDay.openTime),
-          combineDateAndTime(date, hoursForDay.closeTime),
+          combineDateAndTime(lessonsDate, lessonsDayHours.openTime),
+          combineDateAndTime(lessonsDate, lessonsDayHours.closeTime),
           lessons,
         )
       : lessons
@@ -319,98 +341,98 @@ export function SchedulePanel() {
             </p>
           )}
 
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Time</TableHead>
-                <TableHead>Student</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead className="w-40">Time</TableHead>
+                <TableHead className="w-48">Student</TableHead>
+                <TableHead className="w-36">Status</TableHead>
                 <TableHead>Notes</TableHead>
-                <TableHead />
+                <TableHead className="w-28" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {lessonsLoading ? (
-                <TableSkeletonRows columns={5} />
+              {lessonsLoading && !hasLoadedLessons ? (
+                showLessonsSkeleton ? <TableSkeletonRows columns={5} /> : null
               ) : (
                 <>
-              {scheduleRows.map((row) =>
-                row.kind === 'gap' ? (
-                  <TableRow key={`gap-${row.start.toISOString()}`}>
-                    <TableCell className="text-muted-foreground">
-                      {formatTime(row.start)} – {formatTime(row.end)}
-                    </TableCell>
-                    <TableCell colSpan={4} className="italic text-muted-foreground">Available</TableCell>
-                  </TableRow>
-                ) : (
-                  <TableRow key={row.lesson.id} className={row.lesson.status === 'cancelled' ? 'cancelled-row' : ''}>
-                    <TableCell>
-                      {formatTime(new Date(row.lesson.startTime))} – {formatTime(new Date(row.lesson.endTime))}
-                    </TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-1.5">
-                        {row.lesson.recurringSeriesId && (
-                          <Repeat className="size-3.5 shrink-0 text-muted-foreground" aria-label="Recurring lesson" />
-                        )}
-                        {row.lesson.student.firstName} {row.lesson.student.lastName}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <Select value={row.lesson.status} onValueChange={(v) => handleStatus(row.lesson.id, v as LessonStatus)}>
-                        <SelectTrigger className="w-32">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(STATUS_LABEL).map(([value, label]) => (
-                            <SelectItem key={value} value={value}>{label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell>
-                      {editingNotesId === row.lesson.id ? (
-                        <Input
-                          autoFocus
-                          className="h-7 w-40"
-                          value={notesDraft}
-                          onChange={(e) => setNotesDraft(e.target.value)}
-                          onBlur={() => saveNotes(row.lesson.id)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              saveNotes(row.lesson.id)
-                            }
-                            if (e.key === 'Escape') {
-                              e.preventDefault()
-                              cancelEditingNotes()
-                            }
-                          }}
-                        />
-                      ) : (
-                        <span
-                          role="button"
-                          tabIndex={0}
-                          className="cursor-pointer hover:underline"
-                          onClick={() => startEditingNotes(row.lesson)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') startEditingNotes(row.lesson)
-                          }}
-                        >
-                          {row.lesson.notes || <span className="italic text-muted-foreground">Add note</span>}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(row.lesson)}>Delete</Button>
-                    </TableCell>
-                  </TableRow>
-                ),
-              )}
-              {scheduleRows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center italic text-muted-foreground">No lessons scheduled for this day.</TableCell>
-                </TableRow>
-              )}
+                  {scheduleRows.map((row) =>
+                    row.kind === 'gap' ? (
+                      <TableRow key={`gap-${row.start.toISOString()}`}>
+                        <TableCell className="text-muted-foreground">
+                          {formatTime(row.start)} – {formatTime(row.end)}
+                        </TableCell>
+                        <TableCell colSpan={4} className="italic text-muted-foreground">Available</TableCell>
+                      </TableRow>
+                    ) : (
+                      <TableRow key={row.lesson.id} className={row.lesson.status === 'cancelled' ? 'cancelled-row' : ''}>
+                        <TableCell>
+                          {formatTime(new Date(row.lesson.startTime))} – {formatTime(new Date(row.lesson.endTime))}
+                        </TableCell>
+                        <TableCell>
+                          <span className="inline-flex items-center gap-1.5">
+                            {row.lesson.recurringSeriesId && (
+                              <Repeat className="size-3.5 shrink-0 text-muted-foreground" aria-label="Recurring lesson" />
+                            )}
+                            {row.lesson.student.firstName} {row.lesson.student.lastName}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <Select value={row.lesson.status} onValueChange={(v) => handleStatus(row.lesson.id, v as LessonStatus)}>
+                            <SelectTrigger className="w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(STATUS_LABEL).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>{label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell className="truncate">
+                          {editingNotesId === row.lesson.id ? (
+                            <Input
+                              autoFocus
+                              className="h-7 w-40"
+                              value={notesDraft}
+                              onChange={(e) => setNotesDraft(e.target.value)}
+                              onBlur={() => saveNotes(row.lesson.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault()
+                                  saveNotes(row.lesson.id)
+                                }
+                                if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  cancelEditingNotes()
+                                }
+                              }}
+                            />
+                          ) : (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              className="block cursor-pointer truncate hover:underline"
+                              onClick={() => startEditingNotes(row.lesson)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') startEditingNotes(row.lesson)
+                              }}
+                            >
+                              {row.lesson.notes || <span className="italic text-muted-foreground">Add note</span>}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(row.lesson)}><Trash2 />Delete</Button>
+                        </TableCell>
+                      </TableRow>
+                    ),
+                  )}
+                  {scheduleRows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center italic text-muted-foreground">No lessons scheduled for this day.</TableCell>
+                    </TableRow>
+                  )}
                 </>
               )}
             </TableBody>
@@ -427,8 +449,8 @@ export function SchedulePanel() {
             This lesson is part of a weekly series. What would you like to delete?
           </p>
           <DialogFooter className="sm:flex-col sm:gap-2">
-            <Button variant="destructive" onClick={handleDeleteJustThisLesson}>Just this lesson</Button>
-            <Button variant="destructive" onClick={handleDeleteThisAndFutureLessons}>This and all future lessons</Button>
+            <Button variant="destructive" onClick={handleDeleteJustThisLesson}><Trash2 />Just this lesson</Button>
+            <Button variant="destructive" onClick={handleDeleteThisAndFutureLessons}><Trash2 />This and all future lessons</Button>
             <Button variant="ghost" onClick={() => setDeleteModalLesson(null)}>Cancel</Button>
           </DialogFooter>
         </DialogContent>

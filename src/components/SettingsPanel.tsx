@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { Switch } from '@/components/ui/switch'
 
 const DAY_LABEL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -13,6 +14,7 @@ const DAY_LABEL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 export function SettingsPanel() {
   const [hours, setHours] = useState<BusinessHours[]>([])
   const [loading, setLoading] = useState(true)
+  const showSkeleton = useDelayedFlag(loading)
   const [restoring, setRestoring] = useState(false)
 
   useEffect(() => {
@@ -54,14 +56,16 @@ export function SettingsPanel() {
       </p>
       <div className="flex flex-col gap-3">
         {loading
-          ? Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 border-b border-border pb-3 last:border-0">
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-5 w-10" />
-                <Skeleton className="h-9 w-24" />
-                <Skeleton className="h-9 w-24" />
-              </div>
-            ))
+          ? showSkeleton
+            ? Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-4 border-b border-border pb-3 last:border-0">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-5 w-10" />
+                  <Skeleton className="h-9 w-24" />
+                  <Skeleton className="h-9 w-24" />
+                </div>
+              ))
+            : null
           : hours.map((h) => (
               <div key={h.dayOfWeek} className="flex items-center gap-4 border-b border-border pb-3 last:border-0">
                 <span className="w-28 shrink-0 font-medium">{DAY_LABEL[h.dayOfWeek]}</span>

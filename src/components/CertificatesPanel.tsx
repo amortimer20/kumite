@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { getErrorMessage } from '@/lib/errors'
 import {
   Select,
@@ -51,6 +52,7 @@ export function CertificatesPanel() {
   const [printing, setPrinting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const showSkeleton = useDelayedFlag(loading)
 
   useEffect(() => {
     Promise.all([
@@ -100,21 +102,23 @@ export function CertificatesPanel() {
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Certificates</h2>
       {loading ? (
-        <div className="flex max-w-md flex-col gap-3">
-          <div>
-            <Skeleton className="mb-1 h-4 w-16" />
+        showSkeleton ? (
+          <div className="flex max-w-md flex-col gap-3">
+            <div>
+              <Skeleton className="mb-1 h-4 w-16" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+            <div>
+              <Skeleton className="mb-1 h-4 w-12" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+            <div>
+              <Skeleton className="mb-1 h-4 w-12" />
+              <Skeleton className="h-9 w-full" />
+            </div>
             <Skeleton className="h-9 w-full" />
           </div>
-          <div>
-            <Skeleton className="mb-1 h-4 w-12" />
-            <Skeleton className="h-9 w-full" />
-          </div>
-          <div>
-            <Skeleton className="mb-1 h-4 w-12" />
-            <Skeleton className="h-9 w-full" />
-          </div>
-          <Skeleton className="h-9 w-full" />
-        </div>
+        ) : null
       ) : (
         <form className="flex max-w-md flex-col gap-3" onSubmit={handlePrint}>
           <div>

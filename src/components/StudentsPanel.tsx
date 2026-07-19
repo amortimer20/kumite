@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
 import type { FamilyMember, FamilyMemberInput, Student, StudentInput } from '../../shared/types'
 import { TableSkeletonRows } from './TableSkeletonRows'
+import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -97,6 +99,7 @@ export function StudentsPanel() {
 
   const [showArchived, setShowArchived] = useState(false)
   const [loading, setLoading] = useState(true)
+  const showSkeleton = useDelayedFlag(loading)
 
   async function refresh() {
     const updated = await api.students.list()
@@ -263,36 +266,36 @@ export function StudentsPanel() {
         <Checkbox checked={showArchived} onCheckedChange={(checked) => setShowArchived(checked === true)} />
         Show archived
       </label>
-      <Table>
+      <Table className="table-fixed">
         <TableHeader>
           <TableRow>
-            <TableHead>Name</TableHead>
-            <TableHead>Rank</TableHead>
+            <TableHead className="w-48">Name</TableHead>
+            <TableHead className="w-28">Rank</TableHead>
             <TableHead>Email</TableHead>
-            <TableHead>Phone</TableHead>
-            <TableHead />
+            <TableHead className="w-32">Phone</TableHead>
+            <TableHead className="w-40" />
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
-            <TableSkeletonRows columns={5} />
+            showSkeleton ? <TableSkeletonRows columns={5} /> : null
           ) : (
             <>
               {students
                 .filter((s) => showArchived || s.active)
                 .map((s) => (
                   <TableRow key={s.id}>
-                    <TableCell>
+                    <TableCell className="truncate">
                       {s.firstName} {s.lastName}
                       {!s.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
                     </TableCell>
                     <TableCell>{s.rank ?? '—'}</TableCell>
-                    <TableCell>{s.email ?? '—'}</TableCell>
+                    <TableCell className="truncate">{s.email ?? '—'}</TableCell>
                     <TableCell>{s.phone ?? '—'}</TableCell>
                     <TableCell className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
                       {s.active ? (
-                        <Button variant="destructive" size="sm" onClick={() => handleDelete(s)}>Delete</Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleDelete(s)}><Trash2 />Delete</Button>
                       ) : (
                         <Button variant="outline" size="sm" onClick={() => handleReactivate(s)}>Reactivate</Button>
                       )}
@@ -431,7 +434,7 @@ export function StudentsPanel() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button variant="destructive" size="sm" onClick={() => handleDeleteFamilyMember(fm)}>Delete</Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleDeleteFamilyMember(fm)}><Trash2 />Delete</Button>
                 </div>
               ))}
               {editingStudent?.familyMembers.length === 0 && (
