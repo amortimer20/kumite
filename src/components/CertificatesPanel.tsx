@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { api } from '../api'
 import type { Student } from '../../shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Skeleton } from '@/components/ui/skeleton'
+import { getErrorMessage } from '@/lib/errors'
 import {
   Select,
   SelectContent,
@@ -47,11 +50,13 @@ export function CertificatesPanel() {
 
   const [printing, setPrinting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.students.list().then((all) => setStudents(all.filter((s) => s.active)))
-    api.certificates.listAvailableRanks().then(setAvailableRanks)
+    Promise.all([
+      api.students.list().then((all) => setStudents(all.filter((s) => s.active))),
+      api.certificates.listAvailableRanks().then(setAvailableRanks),
+    ]).finally(() => setLoading(false))
   }, [])
 
   const selectedStudent = students.find((s) => s.id === studentId)
@@ -76,7 +81,6 @@ export function CertificatesPanel() {
   async function handlePrint(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    setStatus(null)
     if (!selectedPerson || !rank || !date) {
       setError('Select a person, rank, and date first.')
       return
@@ -84,9 +88,9 @@ export function CertificatesPanel() {
     setPrinting(true)
     try {
       await api.certificates.print({ name: selectedPerson.label, rank, date })
-      setStatus('Opened in your PDF viewer — print from there.')
+      toast.success('Opened in your PDF viewer — print from there.')
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      toast.error(getErrorMessage(err))
     } finally {
       setPrinting(false)
     }
@@ -95,63 +99,80 @@ export function CertificatesPanel() {
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Certificates</h2>
-      <form className="flex max-w-md flex-col gap-3" onSubmit={handlePrint}>
-        <div>
-          <Label className="mb-1">Student</Label>
-          <Select value={studentId} onValueChange={handleStudentChange} disabled={students.length === 0}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a student" />
-            </SelectTrigger>
-            <SelectContent>
-              {students.map((s) => (
-                <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {personOptions.length > 1 && (
+      {loading ? (
+        <div className="flex max-w-md flex-col gap-3">
           <div>
-            <Label className="mb-1">Certificate for</Label>
-            <Select key={studentId} value={personId} onValueChange={handlePersonChange}>
+            <Skeleton className="mb-1 h-4 w-16" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+          <div>
+            <Skeleton className="mb-1 h-4 w-12" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+          <div>
+            <Skeleton className="mb-1 h-4 w-12" />
+            <Skeleton className="h-9 w-full" />
+          </div>
+          <Skeleton className="h-9 w-full" />
+        </div>
+      ) : (
+        <form className="flex max-w-md flex-col gap-3" onSubmit={handlePrint}>
+          <div>
+            <Label className="mb-1">Student</Label>
+            <Select value={studentId} onValueChange={handleStudentChange} disabled={students.length === 0}>
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder="Select a student" />
               </SelectTrigger>
               <SelectContent>
-                {personOptions.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
+                {students.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-        )}
 
-        <div>
-          <Label className="mb-1">Rank</Label>
-          <Select key={`${studentId}-${personId}`} value={rank} onValueChange={setRank} disabled={!selectedPerson}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a rank" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableRanks.map((r) => (
-                <SelectItem key={r} value={r}>{r}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          {personOptions.length > 1 && (
+            <div>
+              <Label className="mb-1">Certificate for</Label>
+              <Select key={studentId} value={personId} onValueChange={handlePersonChange}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {personOptions.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-        <div>
-          <Label className="mb-1">Date</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
+          <div>
+            <Label className="mb-1">Rank</Label>
+            <Select key={`${studentId}-${personId}`} value={rank} onValueChange={setRank} disabled={!selectedPerson}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a rank" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRanks.map((r) => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        <Button type="submit" disabled={printing || !selectedPerson || !rank}>
-          {printing ? 'Printing…' : 'Print Certificate'}
-        </Button>
+          <div>
+            <Label className="mb-1">Date</Label>
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {status && <p className="text-sm text-muted-foreground">{status}</p>}
-      </form>
+          <Button type="submit" disabled={printing || !selectedPerson || !rank}>
+            {printing ? 'Printing…' : 'Print Certificate'}
+          </Button>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </form>
+      )}
     </div>
   )
 }

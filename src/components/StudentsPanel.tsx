@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
 import type { FamilyMember, FamilyMemberInput, Student, StudentInput } from '../../shared/types'
+import { TableSkeletonRows } from './TableSkeletonRows'
+import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -93,7 +96,7 @@ export function StudentsPanel() {
   const [familyFormKey, setFamilyFormKey] = useState(0)
 
   const [showArchived, setShowArchived] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   async function refresh() {
     const updated = await api.students.list()
@@ -104,7 +107,7 @@ export function StudentsPanel() {
   }
 
   useEffect(() => {
-    refresh()
+    refresh().finally(() => setLoading(false))
   }, [])
 
   async function handleAdd(e: React.FormEvent) {
@@ -116,11 +119,12 @@ export function StudentsPanel() {
     }
     try {
       await api.students.create(normalize(addForm))
+      toast.success(`${addForm.firstName.trim()} ${addForm.lastName.trim()} added.`)
       setAddForm(EMPTY_FORM)
       setAddFormKey((k) => k + 1)
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      toast.error(getErrorMessage(err))
     }
   }
 
@@ -130,16 +134,18 @@ export function StudentsPanel() {
     )
     if (!confirmed) return
 
-    setNotice(null)
     const { archived } = await api.students.delete(student.id)
     if (archived) {
-      setNotice(`${student.firstName} ${student.lastName} has lesson history, so they were archived instead of deleted.`)
+      toast.info(`${student.firstName} ${student.lastName} has lesson history, so they were archived instead of deleted.`)
+    } else {
+      toast.success(`${student.firstName} ${student.lastName} deleted.`)
     }
     await refresh()
   }
 
-  async function handleReactivate(id: string) {
-    await api.students.update(id, { active: true })
+  async function handleReactivate(student: Student) {
+    await api.students.update(student.id, { active: true })
+    toast.success(`${student.firstName} ${student.lastName} reactivated.`)
     await refresh()
   }
 
@@ -161,10 +167,11 @@ export function StudentsPanel() {
     }
     try {
       await api.students.update(editingStudent.id, normalize(editForm))
+      toast.success('Changes saved.')
       setEditingStudent(null)
       await refresh()
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : String(err))
+      toast.error(getErrorMessage(err))
     }
   }
 
@@ -182,11 +189,12 @@ export function StudentsPanel() {
         lastName: familyForm.lastName.trim(),
         rank: familyForm.rank,
       })
+      toast.success(`${familyForm.firstName.trim()} ${familyForm.lastName.trim()} added.`)
       setFamilyForm(EMPTY_FAMILY_FORM)
       setFamilyFormKey((k) => k + 1)
       await refresh()
     } catch (err) {
-      setFamilyError(err instanceof Error ? err.message : String(err))
+      toast.error(getErrorMessage(err))
     }
   }
 
@@ -202,6 +210,7 @@ export function StudentsPanel() {
     if (!confirmed) return
 
     await api.familyMembers.delete(familyMember.id)
+    toast.success(`${familyMember.firstName} ${familyMember.lastName} removed.`)
     await refresh()
   }
 
@@ -250,7 +259,6 @@ export function StudentsPanel() {
         <Button type="submit">Add Student</Button>
       </form>
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
-      {notice && <p className="mb-4 text-sm text-muted-foreground">{notice}</p>}
       <label className="mb-3 flex w-fit items-center gap-2 text-sm text-muted-foreground">
         <Checkbox checked={showArchived} onCheckedChange={(checked) => setShowArchived(checked === true)} />
         Show archived
@@ -266,31 +274,37 @@ export function StudentsPanel() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {students
-            .filter((s) => showArchived || s.active)
-            .map((s) => (
-              <TableRow key={s.id}>
-                <TableCell>
-                  {s.firstName} {s.lastName}
-                  {!s.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
-                </TableCell>
-                <TableCell>{s.rank ?? '—'}</TableCell>
-                <TableCell>{s.email ?? '—'}</TableCell>
-                <TableCell>{s.phone ?? '—'}</TableCell>
-                <TableCell className="flex gap-2">
-                  <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
-                  {s.active ? (
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(s)}>Delete</Button>
-                  ) : (
-                    <Button variant="outline" size="sm" onClick={() => handleReactivate(s.id)}>Reactivate</Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          {students.filter((s) => showArchived || s.active).length === 0 && (
-            <TableRow>
-              <TableCell colSpan={5} className="text-center italic text-muted-foreground">No students yet.</TableCell>
-            </TableRow>
+          {loading ? (
+            <TableSkeletonRows columns={5} />
+          ) : (
+            <>
+              {students
+                .filter((s) => showArchived || s.active)
+                .map((s) => (
+                  <TableRow key={s.id}>
+                    <TableCell>
+                      {s.firstName} {s.lastName}
+                      {!s.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
+                    </TableCell>
+                    <TableCell>{s.rank ?? '—'}</TableCell>
+                    <TableCell>{s.email ?? '—'}</TableCell>
+                    <TableCell>{s.phone ?? '—'}</TableCell>
+                    <TableCell className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
+                      {s.active ? (
+                        <Button variant="destructive" size="sm" onClick={() => handleDelete(s)}>Delete</Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={() => handleReactivate(s)}>Reactivate</Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              {students.filter((s) => showArchived || s.active).length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center italic text-muted-foreground">No students yet.</TableCell>
+                </TableRow>
+              )}
+            </>
           )}
         </TableBody>
       </Table>
@@ -417,7 +431,7 @@ export function StudentsPanel() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button variant="outline" size="sm" onClick={() => handleDeleteFamilyMember(fm)}>Delete</Button>
+                  <Button variant="destructive" size="sm" onClick={() => handleDeleteFamilyMember(fm)}>Delete</Button>
                 </div>
               ))}
               {editingStudent?.familyMembers.length === 0 && (

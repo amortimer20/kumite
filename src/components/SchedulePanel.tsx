@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Repeat } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '../api'
 import type { BusinessHours, Instructor, Lesson, LessonStatus, Student } from '../../shared/types'
+import { TableSkeletonRows } from './TableSkeletonRows'
+import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -111,6 +114,7 @@ export function SchedulePanel() {
   const [notes, setNotes] = useState('')
   const [repeatsWeekly, setRepeatsWeekly] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lessonsLoading, setLessonsLoading] = useState(true)
 
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState('')
@@ -124,12 +128,18 @@ export function SchedulePanel() {
   async function refreshLessons() {
     if (!instructorId) {
       setLessons([])
+      setLessonsLoading(false)
       return
     }
+    setLessonsLoading(true)
     const { start, end } = dayBounds(date)
-    setLessons(
-      await api.lessons.list({ instructorId, start: start.toISOString(), end: end.toISOString() }),
-    )
+    try {
+      setLessons(
+        await api.lessons.list({ instructorId, start: start.toISOString(), end: end.toISOString() }),
+      )
+    } finally {
+      setLessonsLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -176,11 +186,12 @@ export function SchedulePanel() {
           notes: notes.trim() || null,
         })
       }
+      toast.success(repeatsWeekly ? 'Weekly series scheduled.' : 'Lesson scheduled.')
       setNotes('')
       setRepeatsWeekly(false)
       await refreshLessons()
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      toast.error(getErrorMessage(err))
     }
   }
 
@@ -191,6 +202,7 @@ export function SchedulePanel() {
 
   async function handleDelete(id: string) {
     await api.lessons.delete(id)
+    toast.success('Lesson deleted.')
     await refreshLessons()
   }
 
@@ -211,6 +223,7 @@ export function SchedulePanel() {
   async function handleDeleteThisAndFutureLessons() {
     if (!deleteModalLesson?.recurringSeriesId) return
     await api.recurringSeries.deleteFrom(deleteModalLesson.recurringSeriesId, deleteModalLesson.startTime)
+    toast.success('Deleted this and all future lessons.')
     setDeleteModalLesson(null)
     await refreshLessons()
   }
@@ -317,6 +330,10 @@ export function SchedulePanel() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {lessonsLoading ? (
+                <TableSkeletonRows columns={5} />
+              ) : (
+                <>
               {scheduleRows.map((row) =>
                 row.kind === 'gap' ? (
                   <TableRow key={`gap-${row.start.toISOString()}`}>
@@ -384,7 +401,7 @@ export function SchedulePanel() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <Button variant="outline" size="sm" onClick={() => handleDeleteClick(row.lesson)}>Delete</Button>
+                      <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(row.lesson)}>Delete</Button>
                     </TableCell>
                   </TableRow>
                 ),
@@ -393,6 +410,8 @@ export function SchedulePanel() {
                 <TableRow>
                   <TableCell colSpan={5} className="text-center italic text-muted-foreground">No lessons scheduled for this day.</TableCell>
                 </TableRow>
+              )}
+                </>
               )}
             </TableBody>
           </Table>
@@ -408,8 +427,8 @@ export function SchedulePanel() {
             This lesson is part of a weekly series. What would you like to delete?
           </p>
           <DialogFooter className="sm:flex-col sm:gap-2">
-            <Button variant="outline" onClick={handleDeleteJustThisLesson}>Just this lesson</Button>
-            <Button variant="outline" onClick={handleDeleteThisAndFutureLessons}>This and all future lessons</Button>
+            <Button variant="destructive" onClick={handleDeleteJustThisLesson}>Just this lesson</Button>
+            <Button variant="destructive" onClick={handleDeleteThisAndFutureLessons}>This and all future lessons</Button>
             <Button variant="ghost" onClick={() => setDeleteModalLesson(null)}>Cancel</Button>
           </DialogFooter>
         </DialogContent>

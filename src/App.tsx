@@ -6,6 +6,7 @@ import { SchedulePanel } from './components/SchedulePanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { CertificatesPanel } from './components/CertificatesPanel'
 import { Button } from '@/components/ui/button'
+import { Toaster } from '@/components/ui/sonner'
 
 const TABS = ['Schedule', 'Students', 'Instructors', 'Certificates', 'Settings'] as const
 type Tab = (typeof TABS)[number]
@@ -36,6 +37,7 @@ function App() {
         {tab === 'Certificates' && <CertificatesPanel />}
         {tab === 'Settings' && <SettingsPanel />}
       </main>
+      <Toaster />
     </div>
   )
 }
