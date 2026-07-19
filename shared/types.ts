@@ -74,6 +74,10 @@ export interface Instructor {
   phone: string | null
   active: boolean
   createdAt: string
+  // Lessons that haven't actually happened yet (excludes completed/no_show) —
+  // these are what get deleted along with the instructor; used to word the
+  // delete confirmation.
+  upcomingLessonCount: number
 }
 
 export interface InstructorInput {
@@ -158,6 +162,12 @@ export interface Api {
     list(): Promise<Instructor[]>
     create(input: InstructorInput): Promise<Instructor>
     update(id: string, input: Partial<InstructorInput>): Promise<Instructor>
+    // Always deletes the instructor's upcoming lessons (and any recurring
+    // series left with none remaining) first. If real lesson history
+    // (completed/no_show) still blocks the hard delete, falls back to
+    // archiving instead — same as students, but with no separate choice to
+    // make since there's nothing to ask: history is always kept, everything
+    // else is always cleared.
     delete(id: string): Promise<{ archived: boolean }>
   }
   lessons: {

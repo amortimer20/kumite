@@ -87,9 +87,11 @@ export function InstructorsPanel() {
   }
 
   async function handleDelete(instructor: Instructor) {
-    const confirmed = window.confirm(
-      `Delete ${instructor.firstName} ${instructor.lastName}? If they have lesson history they'll be archived instead — otherwise this cannot be undone.`,
-    )
+    const message =
+      instructor.upcomingLessonCount > 0
+        ? `Delete ${instructor.firstName} ${instructor.lastName}? This will also delete their ${instructor.upcomingLessonCount} upcoming lesson${instructor.upcomingLessonCount === 1 ? '' : 's'}. This cannot be undone.`
+        : `Delete ${instructor.firstName} ${instructor.lastName}? This cannot be undone.`
+    const confirmed = window.confirm(message)
     if (!confirmed) return
 
     const { archived } = await api.instructors.delete(instructor.id)
