@@ -92,6 +92,10 @@ export function StudentsPanel() {
   const [editForm, setEditForm] = useState<StudentInput>(EMPTY_FORM)
   const [editError, setEditError] = useState<string | null>(null)
 
+  // A student with lessons can't just be deleted outright — this opens a
+  // modal to choose archive (keep history) vs. delete everything.
+  const [deleteModalStudent, setDeleteModalStudent] = useState<Student | null>(null)
+
   const [familyForm, setFamilyForm] = useState<FamilyMemberInput>(EMPTY_FAMILY_FORM)
   const [familyError, setFamilyError] = useState<string | null>(null)
   // Same Radix Select reset-on-undefined issue as addFormKey above.
@@ -131,10 +135,16 @@ export function StudentsPanel() {
     }
   }
 
-  async function handleDelete(student: Student) {
-    const confirmed = window.confirm(
-      `Delete ${student.firstName} ${student.lastName}? If they have lesson history they'll be archived instead — otherwise this cannot be undone.`,
-    )
+  function handleDeleteClick(student: Student) {
+    if (student.lessonCount > 0) {
+      setDeleteModalStudent(student)
+      return
+    }
+    handleDeleteConfirmed(student)
+  }
+
+  async function handleDeleteConfirmed(student: Student) {
+    const confirmed = window.confirm(`Delete ${student.firstName} ${student.lastName}? This cannot be undone.`)
     if (!confirmed) return
 
     const { archived } = await api.students.delete(student.id)
@@ -143,6 +153,22 @@ export function StudentsPanel() {
     } else {
       toast.success(`${student.firstName} ${student.lastName} deleted.`)
     }
+    await refresh()
+  }
+
+  async function handleArchiveFromModal() {
+    if (!deleteModalStudent) return
+    await api.students.delete(deleteModalStudent.id)
+    toast.success(`${deleteModalStudent.firstName} ${deleteModalStudent.lastName} archived.`)
+    setDeleteModalStudent(null)
+    await refresh()
+  }
+
+  async function handleDeleteEverythingFromModal() {
+    if (!deleteModalStudent) return
+    await api.students.delete(deleteModalStudent.id, { force: true })
+    toast.success(`${deleteModalStudent.firstName} ${deleteModalStudent.lastName} and their lessons deleted.`)
+    setDeleteModalStudent(null)
     await refresh()
   }
 
@@ -295,7 +321,7 @@ export function StudentsPanel() {
                     <TableCell className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
                       {s.active ? (
-                        <Button variant="destructive" size="sm" onClick={() => handleDelete(s)}><Trash2 />Delete</Button>
+                        <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(s)}><Trash2 />Delete</Button>
                       ) : (
                         <Button variant="outline" size="sm" onClick={() => handleReactivate(s)}>Reactivate</Button>
                       )}
@@ -473,6 +499,25 @@ export function StudentsPanel() {
             </form>
             {familyError && <p className="mt-1 text-sm text-destructive">{familyError}</p>}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteModalStudent !== null} onOpenChange={(open) => !open && setDeleteModalStudent(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete {deleteModalStudent?.firstName} {deleteModalStudent?.lastName}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {deleteModalStudent?.firstName} has {deleteModalStudent?.lessonCount} lesson
+            {deleteModalStudent?.lessonCount === 1 ? '' : 's'} on the schedule. What would you like to do?
+          </p>
+          <DialogFooter className="sm:flex-col sm:gap-2">
+            <Button variant="outline" onClick={handleArchiveFromModal}>Archive (keep lesson history)</Button>
+            <Button variant="destructive" onClick={handleDeleteEverythingFromModal}>
+              <Trash2 />Delete permanently (also deletes {deleteModalStudent?.lessonCount} lessons)
+            </Button>
+            <Button variant="ghost" onClick={() => setDeleteModalStudent(null)}>Cancel</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

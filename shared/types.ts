@@ -31,6 +31,9 @@ export interface Student {
   createdAt: string
   updatedAt: string
   familyMembers: FamilyMember[]
+  // Total lessons ever booked for this student — used to decide whether
+  // deleting them needs the archive-or-delete-everything choice.
+  lessonCount: number
 }
 
 export interface StudentInput {
@@ -147,7 +150,9 @@ export interface Api {
     update(id: string, input: Partial<StudentInput>): Promise<Student>
     // Deleting a student with lesson history isn't possible (foreign key),
     // so this archives them instead; archived: true tells the UI which happened.
-    delete(id: string): Promise<{ archived: boolean }>
+    // Passing force:true instead deletes the student's lessons and recurring
+    // series first, so the student itself can be hard-deleted regardless.
+    delete(id: string, options?: { force?: boolean }): Promise<{ archived: boolean }>
   }
   instructors: {
     list(): Promise<Instructor[]>

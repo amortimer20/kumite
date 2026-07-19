@@ -17,7 +17,7 @@ const api: Api = {
     list: () => ipcRenderer.invoke('students:list'),
     create: (input: StudentInput) => ipcRenderer.invoke('students:create', input),
     update: (id: string, input: Partial<StudentInput>) => ipcRenderer.invoke('students:update', id, input),
-    delete: (id: string) => ipcRenderer.invoke('students:delete', id),
+    delete: (id: string, options?: { force?: boolean }) => ipcRenderer.invoke('students:delete', id, options),
   },
   instructors: {
     list: () => ipcRenderer.invoke('instructors:list'),
