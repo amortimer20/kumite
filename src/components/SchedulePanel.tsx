@@ -3,9 +3,12 @@ import { Repeat, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import type { BusinessHours, Instructor, Lesson, LessonStatus, Student } from '../../shared/types'
+import { RecurringLessonDeleteDialog } from './RecurringLessonDeleteDialog'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
+import { useLessonDelete } from '@/hooks/useLessonDelete'
 import { getErrorMessage } from '@/lib/errors'
+import { STATUS_LABEL } from '@/lib/lessonStatus'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -26,13 +29,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 
 function todayIsoDate() {
   const now = new Date()
@@ -65,13 +61,6 @@ function dayOfWeekFromIsoDate(isoDate: string) {
 
 function formatTime(d: Date) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-
-const STATUS_LABEL: Record<LessonStatus, string> = {
-  scheduled: 'Scheduled',
-  completed: 'Completed',
-  cancelled: 'Cancelled',
-  no_show: 'No-show',
 }
 
 const DAY_LABEL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -130,11 +119,6 @@ export function SchedulePanel() {
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null)
   const [notesDraft, setNotesDraft] = useState('')
   const skipNextBlurSaveRef = useRef(false)
-
-  // Deleting a one-off lesson happens immediately (routine, low-stakes,
-  // frequent — matches how calendar apps treat single events). A recurring
-  // lesson opens this modal instead, since "delete" is ambiguous there.
-  const [deleteModalLesson, setDeleteModalLesson] = useState<Lesson | null>(null)
 
   async function refreshLessons() {
     const requestId = ++lessonsRequestIdRef.current
@@ -219,33 +203,13 @@ export function SchedulePanel() {
     await refreshLessons()
   }
 
-  async function handleDelete(id: string) {
-    await api.lessons.delete(id)
-    toast.success('Lesson deleted.')
-    await refreshLessons()
-  }
-
-  function handleDeleteClick(lesson: Lesson) {
-    if (lesson.recurringSeriesId) {
-      setDeleteModalLesson(lesson)
-    } else {
-      handleDelete(lesson.id)
-    }
-  }
-
-  async function handleDeleteJustThisLesson() {
-    if (!deleteModalLesson) return
-    await handleDelete(deleteModalLesson.id)
-    setDeleteModalLesson(null)
-  }
-
-  async function handleDeleteThisAndFutureLessons() {
-    if (!deleteModalLesson?.recurringSeriesId) return
-    await api.recurringSeries.deleteFrom(deleteModalLesson.recurringSeriesId, deleteModalLesson.startTime)
-    toast.success('Deleted this and all future lessons.')
-    setDeleteModalLesson(null)
-    await refreshLessons()
-  }
+  const {
+    deleteModalLesson,
+    setDeleteModalLesson,
+    handleDeleteClick,
+    handleDeleteJustThisLesson,
+    handleDeleteThisAndFutureLessons,
+  } = useLessonDelete(refreshLessons)
 
   function startEditingNotes(lesson: Lesson) {
     setEditingNotesId(lesson.id)
@@ -440,21 +404,12 @@ export function SchedulePanel() {
         </div>
       </div>
 
-      <Dialog open={deleteModalLesson !== null} onOpenChange={(open) => !open && setDeleteModalLesson(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete recurring lesson</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This lesson is part of a weekly series. What would you like to delete?
-          </p>
-          <DialogFooter className="sm:flex-col sm:gap-2">
-            <Button variant="destructive" onClick={handleDeleteJustThisLesson}><Trash2 />Just this lesson</Button>
-            <Button variant="destructive" onClick={handleDeleteThisAndFutureLessons}><Trash2 />This and all future lessons</Button>
-            <Button variant="ghost" onClick={() => setDeleteModalLesson(null)}>Cancel</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RecurringLessonDeleteDialog
+        lesson={deleteModalLesson}
+        onOpenChange={(open) => !open && setDeleteModalLesson(null)}
+        onDeleteJustThis={handleDeleteJustThisLesson}
+        onDeleteThisAndFuture={handleDeleteThisAndFutureLessons}
+      />
     </div>
   )
 }

@@ -29,6 +29,7 @@ export function registerLessonHandlers() {
     return prisma.lesson.findMany({
       where: {
         instructorId: filter?.instructorId,
+        studentId: filter?.studentId,
         startTime: filter?.start ? { gte: new Date(filter.start) } : undefined,
         endTime: filter?.end ? { lte: new Date(filter.end) } : undefined,
       },

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { CalendarDays, Repeat, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
-import type { FamilyMember, FamilyMemberInput, Student, StudentInput } from '../../shared/types'
+import type { FamilyMember, FamilyMemberInput, Lesson, Student, StudentInput } from '../../shared/types'
+import { RecurringLessonDeleteDialog } from './RecurringLessonDeleteDialog'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
+import { useLessonDelete } from '@/hooks/useLessonDelete'
 import { getErrorMessage } from '@/lib/errors'
+import { STATUS_LABEL } from '@/lib/lessonStatus'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -95,6 +98,10 @@ export function StudentsPanel() {
   // A student with lessons can't just be deleted outright — this opens a
   // modal to choose archive (keep history) vs. delete everything.
   const [deleteModalStudent, setDeleteModalStudent] = useState<Student | null>(null)
+
+  const [lessonsStudent, setLessonsStudent] = useState<Student | null>(null)
+  const [studentLessons, setStudentLessons] = useState<Lesson[]>([])
+  const [studentLessonsLoading, setStudentLessonsLoading] = useState(false)
 
   const [familyForm, setFamilyForm] = useState<FamilyMemberInput>(EMPTY_FAMILY_FORM)
   const [familyError, setFamilyError] = useState<string | null>(null)
@@ -243,6 +250,38 @@ export function StudentsPanel() {
     await refresh()
   }
 
+  function sortByStartTime(lessons: Lesson[]) {
+    return lessons.slice().sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+  }
+
+  async function openLessons(student: Student) {
+    setLessonsStudent(student)
+    setStudentLessonsLoading(true)
+    try {
+      const result = await api.lessons.list({ studentId: student.id })
+      setStudentLessons(sortByStartTime(result))
+    } finally {
+      setStudentLessonsLoading(false)
+    }
+  }
+
+  async function refreshStudentLessons() {
+    if (!lessonsStudent) return
+    const result = await api.lessons.list({ studentId: lessonsStudent.id })
+    setStudentLessons(sortByStartTime(result))
+    // A deleted lesson changes lessonCount, which the delete-student modal
+    // relies on to decide whether to offer the archive-vs-delete choice.
+    await refresh()
+  }
+
+  const {
+    deleteModalLesson,
+    setDeleteModalLesson,
+    handleDeleteClick: handleLessonDeleteClick,
+    handleDeleteJustThisLesson,
+    handleDeleteThisAndFutureLessons,
+  } = useLessonDelete(refreshStudentLessons)
+
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Students</h2>
@@ -299,7 +338,7 @@ export function StudentsPanel() {
             <TableHead className="w-28">Rank</TableHead>
             <TableHead>Email</TableHead>
             <TableHead className="w-32">Phone</TableHead>
-            <TableHead className="w-40" />
+            <TableHead className="w-64" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -319,6 +358,7 @@ export function StudentsPanel() {
                     <TableCell className="truncate">{s.email ?? '—'}</TableCell>
                     <TableCell>{s.phone ?? '—'}</TableCell>
                     <TableCell className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openLessons(s)}><CalendarDays />Lessons</Button>
                       <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
                       {s.active ? (
                         <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(s)}><Trash2 />Delete</Button>
@@ -520,6 +560,72 @@ export function StudentsPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={lessonsStudent !== null} onOpenChange={(open) => !open && setLessonsStudent(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{lessonsStudent?.firstName} {lessonsStudent?.lastName}&rsquo;s Lessons</DialogTitle>
+          </DialogHeader>
+          <Table className="table-fixed">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-24">Date</TableHead>
+                <TableHead className="w-40">Time</TableHead>
+                <TableHead className="w-32">Instructor</TableHead>
+                <TableHead className="w-28">Status</TableHead>
+                <TableHead>Notes</TableHead>
+                <TableHead className="w-28" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {studentLessonsLoading ? (
+                <TableSkeletonRows columns={6} />
+              ) : (
+                <>
+                  {studentLessons.map((lesson) => (
+                    <TableRow key={lesson.id} className={lesson.status === 'cancelled' ? 'cancelled-row' : ''}>
+                      <TableCell>{new Date(lesson.startTime).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {new Date(lesson.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {' – '}
+                        {new Date(lesson.endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </TableCell>
+                      <TableCell className="truncate">
+                        <span className="inline-flex items-center gap-1.5">
+                          {lesson.recurringSeriesId && (
+                            <Repeat className="size-3.5 shrink-0 text-muted-foreground" aria-label="Recurring lesson" />
+                          )}
+                          {lesson.instructor.firstName} {lesson.instructor.lastName}
+                        </span>
+                      </TableCell>
+                      <TableCell>{STATUS_LABEL[lesson.status]}</TableCell>
+                      <TableCell className="truncate">{lesson.notes || '—'}</TableCell>
+                      <TableCell>
+                        <Button variant="destructive" size="sm" onClick={() => handleLessonDeleteClick(lesson)}><Trash2 />Delete</Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {studentLessons.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center italic text-muted-foreground">No lessons scheduled.</TableCell>
+                    </TableRow>
+                  )}
+                </>
+              )}
+            </TableBody>
+          </Table>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLessonsStudent(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <RecurringLessonDeleteDialog
+        lesson={deleteModalLesson}
+        onOpenChange={(open) => !open && setDeleteModalLesson(null)}
+        onDeleteJustThis={handleDeleteJustThisLesson}
+        onDeleteThisAndFuture={handleDeleteThisAndFutureLessons}
+      />
     </div>
   )
 }

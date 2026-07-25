@@ -115,6 +115,7 @@ export interface LessonListFilter {
   start?: string
   end?: string
   instructorId?: string
+  studentId?: string
 }
 
 export interface BusinessHours {
