@@ -1,9 +1,12 @@
 // @see - https://www.electron.build/configuration/configuration
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "YourAppID",
+  "appId": "com.amortimer.kumite",
   "asar": true,
-  "productName": "YourAppName",
+  "productName": "Kumite",
+  // Source icon electron-builder converts to .icns (mac) and .ico (win) at
+  // build time — needs to be a square PNG, 1024x1024 recommended.
+  "icon": "build/icon.png",
   "directories": {
     "output": "release/${version}"
   },
@@ -15,6 +18,10 @@
     {
       "from": "electron/certificates/templates",
       "to": "certificates"
+    },
+    {
+      "from": "prisma/migrations",
+      "to": "migrations"
     }
   ],
   "mac": {

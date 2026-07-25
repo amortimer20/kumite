@@ -3,6 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3'
 import { PrismaClient } from '../generated/prisma/client.ts'
+import { applyPendingMigrations } from './migrate.ts'
 
 const dbPath = app.isPackaged
   ? path.join(app.getPath('userData'), 'karate-app.db')
@@ -34,6 +35,11 @@ function applyPendingRestore() {
 }
 
 applyPendingRestore()
+
+// Runs before Prisma opens its own connection below, so a fresh install —
+// where this file doesn't exist yet — gets the full schema instead of
+// failing on the very first query.
+applyPendingMigrations(dbPath)
 
 const adapter = new PrismaBetterSqlite3({ url: `file:${dbPath}` })
 
