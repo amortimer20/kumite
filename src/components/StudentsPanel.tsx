@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, Repeat, Trash2 } from 'lucide-react'
+import { CalendarDays, CreditCard, Repeat, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
 import type { FamilyMember, FamilyMemberInput, Lesson, Student, StudentInput } from '../../shared/types'
 import { RecurringLessonDeleteDialog } from './RecurringLessonDeleteDialog'
+import { StudentMembershipDialog } from './StudentMembershipDialog'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { useLessonDelete } from '@/hooks/useLessonDelete'
@@ -103,6 +104,8 @@ export function StudentsPanel() {
   const [studentLessons, setStudentLessons] = useState<Lesson[]>([])
   const [studentLessonsLoading, setStudentLessonsLoading] = useState(false)
 
+  const [membershipStudent, setMembershipStudent] = useState<Student | null>(null)
+
   const [familyForm, setFamilyForm] = useState<FamilyMemberInput>(EMPTY_FAMILY_FORM)
   const [familyError, setFamilyError] = useState<string | null>(null)
   // Same Radix Select reset-on-undefined issue as addFormKey above.
@@ -174,7 +177,7 @@ export function StudentsPanel() {
   async function handleDeleteEverythingFromModal() {
     if (!deleteModalStudent) return
     await api.students.delete(deleteModalStudent.id, { force: true })
-    toast.success(`${deleteModalStudent.firstName} ${deleteModalStudent.lastName} and their lessons deleted.`)
+    toast.success(`${deleteModalStudent.firstName} ${deleteModalStudent.lastName}, their lessons, and any membership/billing history deleted.`)
     setDeleteModalStudent(null)
     await refresh()
   }
@@ -335,10 +338,10 @@ export function StudentsPanel() {
         <TableHeader>
           <TableRow>
             <TableHead className="w-48">Name</TableHead>
-            <TableHead className="w-28">Rank</TableHead>
+            <TableHead className="w-24">Rank</TableHead>
             <TableHead>Email</TableHead>
-            <TableHead className="w-32">Phone</TableHead>
-            <TableHead className="w-64" />
+            <TableHead className="w-28">Phone</TableHead>
+            <TableHead className="w-96" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -358,6 +361,7 @@ export function StudentsPanel() {
                     <TableCell className="truncate">{s.email ?? '—'}</TableCell>
                     <TableCell>{s.phone ?? '—'}</TableCell>
                     <TableCell className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setMembershipStudent(s)}><CreditCard />Membership</Button>
                       <Button variant="outline" size="sm" onClick={() => openLessons(s)}><CalendarDays />Lessons</Button>
                       <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
                       {s.active ? (
@@ -554,7 +558,7 @@ export function StudentsPanel() {
           <DialogFooter className="sm:flex-col sm:gap-2">
             <Button variant="outline" onClick={handleArchiveFromModal}>Archive (keep lesson history)</Button>
             <Button variant="destructive" onClick={handleDeleteEverythingFromModal}>
-              <Trash2 />Delete permanently (also deletes {deleteModalStudent?.lessonCount} lessons)
+              <Trash2 />Delete permanently (also deletes {deleteModalStudent?.lessonCount} lessons and any membership/billing history)
             </Button>
             <Button variant="ghost" onClick={() => setDeleteModalStudent(null)}>Cancel</Button>
           </DialogFooter>
@@ -625,6 +629,11 @@ export function StudentsPanel() {
         onOpenChange={(open) => !open && setDeleteModalLesson(null)}
         onDeleteJustThis={handleDeleteJustThisLesson}
         onDeleteThisAndFuture={handleDeleteThisAndFutureLessons}
+      />
+
+      <StudentMembershipDialog
+        student={membershipStudent}
+        onOpenChange={(open) => !open && setMembershipStudent(null)}
       />
     </div>
   )

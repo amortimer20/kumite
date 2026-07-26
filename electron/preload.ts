@@ -8,6 +8,9 @@ import type {
   LessonInput,
   LessonListFilter,
   LessonStatus,
+  MembershipPaymentInput,
+  MembershipPlanInput,
+  MembershipUsageAdjustmentInput,
   RecurringSeriesInput,
   StudentInput,
 } from '../shared/types.ts'
@@ -52,6 +55,24 @@ const api: Api = {
   certificates: {
     listAvailableRanks: () => ipcRenderer.invoke('certificates:listAvailableRanks'),
     print: (input: CertificateInput) => ipcRenderer.invoke('certificates:print', input),
+  },
+  membershipPlans: {
+    list: () => ipcRenderer.invoke('membershipPlans:list'),
+    create: (input: MembershipPlanInput) => ipcRenderer.invoke('membershipPlans:create', input),
+    update: (id: string, input: Partial<MembershipPlanInput>) => ipcRenderer.invoke('membershipPlans:update', id, input),
+    delete: (id: string) => ipcRenderer.invoke('membershipPlans:delete', id),
+  },
+  studentMemberships: {
+    getForStudent: (studentId: string) => ipcRenderer.invoke('studentMemberships:getForStudent', studentId),
+    assign: (studentId: string, input: { planId: string; priceOverrideCents?: number | null; startDate: string }) =>
+      ipcRenderer.invoke('studentMemberships:assign', studentId, input),
+    update: (id: string, input: { planId?: string; priceOverrideCents?: number | null }) =>
+      ipcRenderer.invoke('studentMemberships:update', id, input),
+    cancel: (id: string) => ipcRenderer.invoke('studentMemberships:cancel', id),
+    recordPayment: (id: string, input: MembershipPaymentInput) => ipcRenderer.invoke('studentMemberships:recordPayment', id, input),
+    deletePayment: (paymentId: string) => ipcRenderer.invoke('studentMemberships:deletePayment', paymentId),
+    addUsageAdjustment: (id: string, input: MembershipUsageAdjustmentInput) =>
+      ipcRenderer.invoke('studentMemberships:addUsageAdjustment', id, input),
   },
 }
 

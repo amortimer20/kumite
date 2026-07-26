@@ -148,6 +148,107 @@ export interface RecurringSeriesInput {
   notes?: string | null
 }
 
+export const MEMBERSHIP_BILLING_FREQUENCIES = ['weekly', 'biweekly', 'monthly'] as const
+
+export type MembershipBillingFrequency = (typeof MEMBERSHIP_BILLING_FREQUENCIES)[number]
+
+// A billing plan the studio offers (e.g. "2 Private, Unlimited Group"). Group
+// class access implied by the title isn't tracked by the app — only the
+// private-lesson allowance is, since private lessons are ordinary Lesson rows
+// and group classes have no per-student scheduling here.
+export interface MembershipPlan {
+  id: string
+  title: string
+  billingFrequency: MembershipBillingFrequency
+  priceCents: number
+  includedPrivateLessons: number
+  active: boolean
+  createdAt: string
+  // Students currently on this plan — used to decide whether deleting it
+  // needs to fall back to archiving instead.
+  studentCount: number
+}
+
+export interface MembershipPlanInput {
+  title: string
+  billingFrequency?: MembershipBillingFrequency
+  priceCents: number
+  includedPrivateLessons?: number
+  active?: boolean
+}
+
+export type MembershipStatus = 'ok' | 'due_soon' | 'overdue'
+
+export interface MembershipPayment {
+  id: string
+  studentMembershipId: string
+  amountCents: number
+  method: string | null
+  paidOn: string
+  coversFrom: string
+  coversUntil: string
+  notes: string | null
+  createdAt: string
+}
+
+// coversFrom/coversUntil describe the billing period(s) this payment settles
+// — a multi-cycle advance payment is just a wider range, not a separate
+// "credit" concept.
+export interface MembershipPaymentInput {
+  amountCents: number
+  method?: string | null
+  paidOn: string
+  coversFrom: string
+  coversUntil: string
+  notes?: string | null
+}
+
+// A manual credit/correction applied on top of the live-computed "private
+// lessons used this period" count, never a raw overwrite. delta is signed
+// from the student's perspective: +1 is a bonus lesson (reduces used,
+// increases what they have remaining); -1 undoes one (increases used).
+export interface MembershipUsageAdjustment {
+  id: string
+  studentMembershipId: string
+  delta: number
+  reason: string | null
+  createdAt: string
+}
+
+export interface MembershipUsageAdjustmentInput {
+  delta: number
+  reason?: string | null
+}
+
+export interface StudentMembership {
+  id: string
+  studentId: string
+  planId: string
+  // null = use plan.priceCents.
+  priceOverrideCents: number | null
+  startDate: string
+  active: boolean
+  createdAt: string
+  plan: MembershipPlan
+  payments: MembershipPayment[]
+  usageAdjustments: MembershipUsageAdjustment[]
+  // --- Computed server-side, not stored ---
+  // priceOverrideCents ?? plan.priceCents
+  effectivePriceCents: number
+  currentPeriodStart: string
+  currentPeriodEnd: string
+  // Whatever comes after the furthest coversUntil across payments, or
+  // startDate if no payments have been recorded yet.
+  nextDueDate: string
+  status: MembershipStatus
+  // Non-cancelled lessons in the current period, plus usage adjustments. A
+  // lesson counts as soon as it's scheduled — only cancelling it releases
+  // the slot — so nothing has to be marked "completed" for this to be accurate.
+  privateLessonsUsed: number
+  // plan.includedPrivateLessons - privateLessonsUsed; can go negative if over.
+  privateLessonsRemaining: number
+}
+
 export interface Api {
   students: {
     list(): Promise<Student[]>
@@ -206,5 +307,36 @@ export interface Api {
     // printing from there is a normal action in that app, not something
     // triggered directly by Kumite.
     print(input: CertificateInput): Promise<void>
+  }
+  membershipPlans: {
+    list(): Promise<MembershipPlan[]>
+    create(input: MembershipPlanInput): Promise<MembershipPlan>
+    update(id: string, input: Partial<MembershipPlanInput>): Promise<MembershipPlan>
+    // Archives instead of deleting if any student is currently on the plan.
+    delete(id: string): Promise<{ archived: boolean }>
+  }
+  studentMemberships: {
+    // The student's currently active membership, with usage/due fields
+    // computed fresh — or null if they don't have one.
+    getForStudent(studentId: string): Promise<StudentMembership | null>
+    // Starts a brand-new membership; throws if the student already has an
+    // active one (use update() to change plans while staying enrolled).
+    assign(
+      studentId: string,
+      input: { planId: string; priceOverrideCents?: number | null; startDate: string },
+    ): Promise<StudentMembership>
+    update(
+      id: string,
+      input: { planId?: string; priceOverrideCents?: number | null },
+    ): Promise<StudentMembership>
+    // Soft-ends it (active: false) — billing/usage history is kept, same as
+    // archiving elsewhere in the app.
+    cancel(id: string): Promise<void>
+    recordPayment(id: string, input: MembershipPaymentInput): Promise<StudentMembership>
+    // Payments have no edit-in-place UI (same as everything else in this
+    // app — delete and re-add rather than editing history), so a payment
+    // entered with a mistake is just removed and re-recorded correctly.
+    deletePayment(paymentId: string): Promise<StudentMembership>
+    addUsageAdjustment(id: string, input: MembershipUsageAdjustmentInput): Promise<StudentMembership>
   }
 }

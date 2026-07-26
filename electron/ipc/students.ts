@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { Prisma } from '../../generated/prisma/client.ts'
 import { prisma } from '../db.ts'
 import { endActiveSeriesForStudent } from './recurringSeries.ts'
+import { cancelActiveMembershipForStudent } from './memberships.ts'
 import type { StudentInput } from '../../shared/types.ts'
 
 const studentInclude = {
@@ -42,6 +43,11 @@ export function registerStudentHandlers() {
       await prisma.$transaction([
         prisma.lesson.deleteMany({ where: { studentId: id } }),
         prisma.recurringSeries.deleteMany({ where: { studentId: id } }),
+        // Payments/adjustments must go before their StudentMembership rows,
+        // which must go before the student itself — all restrict-on-delete.
+        prisma.membershipUsageAdjustment.deleteMany({ where: { studentMembership: { studentId: id } } }),
+        prisma.membershipPayment.deleteMany({ where: { studentMembership: { studentId: id } } }),
+        prisma.studentMembership.deleteMany({ where: { studentId: id } }),
         prisma.student.delete({ where: { id } }),
       ])
       return { archived: false }
@@ -53,6 +59,7 @@ export function registerStudentHandlers() {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
         await prisma.student.update({ where: { id }, data: { active: false } })
         await endActiveSeriesForStudent(id)
+        await cancelActiveMembershipForStudent(id)
         return { archived: true }
       }
       throw err

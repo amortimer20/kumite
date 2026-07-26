@@ -36,6 +36,7 @@ model Student {
   lessons         Lesson[]
   recurringSeries RecurringSeries[]
   familyMembers   FamilyMember[]
+  memberships     StudentMembership[]
 }
 
 // A named, ranked household member tracked alongside a primary Student record
@@ -119,4 +120,83 @@ model Lesson {
   @@index([instructorId])
   @@index([startTime])
   @@index([recurringSeriesId])
+}
+
+// A billing plan the studio offers (e.g. "2 Private, Unlimited Group"). Group
+// class access implied by the title isn't tracked — group classes have no
+// per-student scheduling or roster in this app — so the title is
+// descriptive/billing-only. Only the private-lesson allowance is actually
+// tracked, since private lessons are ordinary Lesson rows.
+model MembershipPlan {
+  id                     String              @id @default(cuid())
+  title                  String
+  // "weekly" | "biweekly" | "monthly" — enforced in application code, see
+  // MEMBERSHIP_BILLING_FREQUENCIES in shared/types.ts.
+  billingFrequency       String              @default("monthly")
+  priceCents             Int
+  includedPrivateLessons Int                 @default(0)
+  // Archived instead of deleted once a student is on it — same fallback as
+  // Student.active/Instructor.active.
+  active                 Boolean             @default(true)
+  createdAt              DateTime            @default(now())
+  studentMemberships     StudentMembership[]
+}
+
+// Links a Student to a MembershipPlan for one continuous stint of billing.
+// Only one row per student should be active at a time (enforced in
+// application code, not the schema) — if a student cancels and later
+// rejoins, that's a new row rather than reusing the old one, so each stint's
+// payments/usage history stays scoped to it.
+model StudentMembership {
+  id                 String                      @id @default(cuid())
+  student            Student                     @relation(fields: [studentId], references: [id])
+  studentId          String
+  plan               MembershipPlan              @relation(fields: [planId], references: [id])
+  planId             String
+  // null = use the plan's own priceCents; set to record a custom deal.
+  priceOverrideCents Int?
+  startDate          DateTime
+  // Set to false when the student is archived/deleted, or they cancel
+  // outright — mirrors Student.active/Instructor.active.
+  active             Boolean                     @default(true)
+  createdAt          DateTime                    @default(now())
+  payments           MembershipPayment[]
+  usageAdjustments   MembershipUsageAdjustment[]
+
+  @@index([studentId])
+  @@index([planId])
+}
+
+// Each payment covers a date range rather than "one period," so paying
+// multiple cycles in advance is just a wider range — no separate credit
+// balance concept needed. "Next due date" is whatever comes after the
+// furthest coversUntil recorded for the membership.
+model MembershipPayment {
+  id                  String            @id @default(cuid())
+  studentMembership   StudentMembership @relation(fields: [studentMembershipId], references: [id])
+  studentMembershipId String
+  amountCents         Int
+  method              String?
+  paidOn              DateTime
+  coversFrom          DateTime
+  coversUntil         DateTime
+  notes               String?
+  createdAt           DateTime          @default(now())
+
+  @@index([studentMembershipId])
+}
+
+// A manual +/- correction to the live-computed "private lessons used this
+// period" count (e.g. a bonus lesson) — additive on top of the computed
+// count, never a raw overwrite, so it can't silently conflict with real
+// scheduling activity.
+model MembershipUsageAdjustment {
+  id                  String            @id @default(cuid())
+  studentMembership   StudentMembership @relation(fields: [studentMembershipId], references: [id])
+  studentMembershipId String
+  delta               Int
+  reason              String?
+  createdAt           DateTime          @default(now())
+
+  @@index([studentMembershipId])
 }
