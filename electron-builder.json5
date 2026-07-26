@@ -7,6 +7,11 @@
   // Source icon electron-builder converts to .icns (mac) and .ico (win) at
   // build time — needs to be a square PNG, 1024x1024 recommended.
   "icon": "build/icon.png",
+  // Without this, electron-builder auto-detects a GitHub publish target
+  // whenever it senses it's running in CI (since the repo has a GitHub
+  // remote) and fails looking for a GH_TOKEN — even though nothing here
+  // asks it to publish anywhere. This is a plain local/artifact build.
+  "publish": null,
   "directories": {
     "output": "release/${version}"
   },
