@@ -2,8 +2,15 @@ import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import type { MembershipPayment, MembershipPlan, MembershipStatus, Student, StudentMembership } from '../../shared/types'
-import { FREQUENCY_LABEL, advanceOnePeriod, dollarsToCents, formatCents } from '@/lib/membershipFormat'
+import type { MembershipPayment, MembershipPlan, Student, StudentMembership } from '../../shared/types'
+import {
+  FREQUENCY_LABEL,
+  MEMBERSHIP_STATUS_COLOR,
+  MEMBERSHIP_STATUS_LABEL,
+  advanceOnePeriod,
+  dollarsToCents,
+  formatCents,
+} from '@/lib/membershipFormat'
 import { dateToIso, isoDateToInstant, todayIso } from '@/lib/isoDate'
 import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
@@ -31,18 +38,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-
-const STATUS_LABEL: Record<MembershipStatus, string> = {
-  ok: 'OK',
-  due_soon: 'Due soon',
-  overdue: 'Overdue',
-}
-
-const STATUS_COLOR: Record<MembershipStatus, string> = {
-  ok: 'text-green-500',
-  due_soon: 'text-amber-500',
-  overdue: 'text-destructive',
-}
 
 const EMPTY_ASSIGN_FORM = { planId: '', priceOverride: '', startDate: todayIso() }
 const EMPTY_PAYMENT_FORM = { amount: '', paidOn: todayIso(), coversFrom: '', coversUntil: '', method: '', notes: '' }
@@ -287,7 +282,7 @@ export function StudentMembershipDialog({
             <div className="rounded-lg border border-border bg-card p-3">
               <div className="flex items-center justify-between">
                 <span className="font-medium">{membership.plan.title}</span>
-                <span className={`text-sm font-medium ${STATUS_COLOR[membership.status]}`}>{STATUS_LABEL[membership.status]}</span>
+                <span className={`text-sm font-medium ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{MEMBERSHIP_STATUS_LABEL[membership.status]}</span>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 {formatCents(membership.effectivePriceCents)} / {FREQUENCY_LABEL[membership.plan.billingFrequency].toLowerCase()}

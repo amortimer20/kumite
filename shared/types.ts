@@ -1,5 +1,9 @@
 export type LessonStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
 
+// "private" is scheduled against a specific student; "group" is just a block
+// on an instructor's schedule with no per-student roster.
+export type LessonType = 'private' | 'group'
+
 export const STUDENT_RANKS = [
   'White',
   'Yellow',
@@ -90,8 +94,11 @@ export interface InstructorInput {
 
 export interface Lesson {
   id: string
-  studentId: string
+  studentId: string | null
   instructorId: string
+  type: LessonType
+  // Group class name (e.g. "Cardio"); null for private lessons.
+  title: string | null
   startTime: string
   endTime: string
   status: LessonStatus
@@ -99,12 +106,16 @@ export interface Lesson {
   recurringSeriesId: string | null
   createdAt: string
   updatedAt: string
-  student: Student
+  student: Student | null
   instructor: Instructor
 }
 
+// "private" requires studentId (and no title); "group" requires title (and
+// no studentId) — enforced in application code, same as LessonStatus.
 export interface LessonInput {
-  studentId: string
+  type?: LessonType
+  studentId?: string | null
+  title?: string | null
   instructorId: string
   startTime: string
   endTime: string
@@ -140,7 +151,9 @@ export interface CertificateInput {
 }
 
 export interface RecurringSeriesInput {
-  studentId: string
+  type?: LessonType
+  studentId?: string | null
+  title?: string | null
   instructorId: string
   startDate: string
   startTime: string
@@ -249,6 +262,13 @@ export interface StudentMembership {
   privateLessonsRemaining: number
 }
 
+// Same as StudentMembership, but with the student attached — only the
+// dashboard's cross-student billing view needs this; everywhere else already
+// knows which student it's dealing with.
+export interface StudentMembershipWithStudent extends StudentMembership {
+  student: Student
+}
+
 export interface Api {
   students: {
     list(): Promise<Student[]>
@@ -319,6 +339,9 @@ export interface Api {
     // The student's currently active membership, with usage/due fields
     // computed fresh — or null if they don't have one.
     getForStudent(studentId: string): Promise<StudentMembership | null>
+    // Every currently active membership across all students, for the
+    // dashboard's billing-health view.
+    listActive(): Promise<StudentMembershipWithStudent[]>
     // Starts a brand-new membership; throws if the student already has an
     // active one (use update() to change plans while staying enrolled).
     assign(

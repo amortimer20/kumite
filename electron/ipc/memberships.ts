@@ -17,6 +17,14 @@ const studentMembershipInclude = {
   usageAdjustments: { orderBy: { createdAt: 'asc' } },
 } satisfies Prisma.StudentMembershipInclude
 
+// Adds the student record on top of studentMembershipInclude — only needed
+// for the dashboard's cross-student billing view; everywhere else already
+// knows which student it's dealing with.
+const studentMembershipWithStudentInclude = {
+  ...studentMembershipInclude,
+  student: true,
+} satisfies Prisma.StudentMembershipInclude
+
 function serializeMembershipPlan<T extends { _count: { studentMemberships: number } }>(plan: T) {
   const { _count, ...rest } = plan
   return { ...rest, studentCount: _count.studentMemberships }
@@ -194,6 +202,17 @@ export function registerMembershipHandlers() {
       include: studentMembershipInclude,
     })
     return membership ? serializeStudentMembership(membership) : null
+  })
+
+  // Used by the dashboard's billing-health view — every currently active
+  // membership across all students, so overdue/due-soon can be found without
+  // knowing which student to look at first.
+  ipcMain.handle('studentMemberships:listActive', async () => {
+    const memberships = await prisma.studentMembership.findMany({
+      where: { active: true },
+      include: studentMembershipWithStudentInclude,
+    })
+    return Promise.all(memberships.map(serializeStudentMembership))
   })
 
   ipcMain.handle(

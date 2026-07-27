@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Repeat, Trash2 } from 'lucide-react'
+import { Repeat, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import type { BusinessHours, Instructor, Lesson, LessonStatus, Student } from '../../shared/types'
+import type { BusinessHours, Instructor, Lesson, LessonStatus, LessonType, Student } from '../../shared/types'
 import { RecurringLessonDeleteDialog } from './RecurringLessonDeleteDialog'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
@@ -102,7 +102,9 @@ export function SchedulePanel() {
   const [instructors, setInstructors] = useState<Instructor[]>([])
   const [businessHours, setBusinessHours] = useState<BusinessHours[]>([])
 
+  const [lessonType, setLessonType] = useState<LessonType>('private')
   const [studentId, setStudentId] = useState('')
+  const [groupTitle, setGroupTitle] = useState('')
   const [instructorId, setInstructorId] = useState('')
   const [startTime, setStartTime] = useState('15:00')
   const [endTime, setEndTime] = useState('15:30')
@@ -166,14 +168,26 @@ export function SchedulePanel() {
   async function handleSchedule(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!studentId || !instructorId) {
-      setError('Add a student and an instructor first.')
+    if (!instructorId) {
+      setError('Add an instructor first.')
       return
     }
+    if (lessonType === 'private' && !studentId) {
+      setError('Add a student first.')
+      return
+    }
+    if (lessonType === 'group' && !groupTitle.trim()) {
+      setError('Enter a class name.')
+      return
+    }
+    const typeFields =
+      lessonType === 'private'
+        ? { type: lessonType, studentId }
+        : { type: lessonType, title: groupTitle.trim() }
     try {
       if (repeatsWeekly) {
         await api.recurringSeries.create({
-          studentId,
+          ...typeFields,
           instructorId,
           startDate: date,
           startTime,
@@ -182,7 +196,7 @@ export function SchedulePanel() {
         })
       } else {
         await api.lessons.create({
-          studentId,
+          ...typeFields,
           instructorId,
           startTime: combineDateAndTime(date, startTime).toISOString(),
           endTime: combineDateAndTime(date, endTime).toISOString(),
@@ -191,6 +205,7 @@ export function SchedulePanel() {
       }
       toast.success(repeatsWeekly ? 'Weekly series scheduled.' : 'Lesson scheduled.')
       setNotes('')
+      setGroupTitle('')
       setRepeatsWeekly(false)
       await refreshLessons()
     } catch (err) {
@@ -277,16 +292,34 @@ export function SchedulePanel() {
         <div className="min-w-0 flex-1">
           <form className="mb-4 rounded-lg border border-border bg-card p-3" onSubmit={handleSchedule}>
             <div className="flex flex-wrap items-center gap-2">
-              <Select value={studentId} onValueChange={setStudentId} disabled={students.length === 0}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="No students yet" />
+              <Select value={lessonType} onValueChange={(v) => setLessonType(v as LessonType)}>
+                <SelectTrigger className="w-28">
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {students.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
-                  ))}
+                  <SelectItem value="private">Private</SelectItem>
+                  <SelectItem value="group">Group</SelectItem>
                 </SelectContent>
               </Select>
+              {lessonType === 'private' ? (
+                <Select value={studentId} onValueChange={setStudentId} disabled={students.length === 0}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="No students yet" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {students.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.firstName} {s.lastName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  className="w-40"
+                  placeholder="Class name (e.g. Cardio)"
+                  value={groupTitle}
+                  onChange={(e) => setGroupTitle(e.target.value)}
+                />
+              )}
               <Input type="time" className="w-auto" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
               <span className="text-muted-foreground">to</span>
               <Input type="time" className="w-auto" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
@@ -309,7 +342,7 @@ export function SchedulePanel() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-40">Time</TableHead>
-                <TableHead className="w-48">Student</TableHead>
+                <TableHead className="w-48">Student / Class</TableHead>
                 <TableHead className="w-36">Status</TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead className="w-28" />
@@ -338,7 +371,14 @@ export function SchedulePanel() {
                             {row.lesson.recurringSeriesId && (
                               <Repeat className="size-3.5 shrink-0 text-muted-foreground" aria-label="Recurring lesson" />
                             )}
-                            {row.lesson.student.firstName} {row.lesson.student.lastName}
+                            {row.lesson.type === 'group' ? (
+                              <>
+                                <Users className="size-3.5 shrink-0 text-muted-foreground" aria-label="Group class" />
+                                {row.lesson.title}
+                              </>
+                            ) : (
+                              <>{row.lesson.student?.firstName} {row.lesson.student?.lastName}</>
+                            )}
                           </span>
                         </TableCell>
                         <TableCell>

@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { prisma } from '../db.ts'
-import { assertNoOverlap } from './lessons.ts'
+import { assertNoOverlap, assertValidLessonInput } from './lessons.ts'
 import type { RecurringSeriesInput } from '../../shared/types.ts'
 
 const lessonInclude = { student: true, instructor: true } as const
@@ -36,6 +36,8 @@ export async function createRecurringSeries(input: RecurringSeriesInput) {
   if (endTime <= startTime) {
     throw new Error('Lesson end time must be after the start time.')
   }
+  const type = input.type ?? 'private'
+  assertValidLessonInput(type, input.studentId, input.title)
 
   const dayOfWeek = new Date(`${input.startDate}T00:00:00`).getDay()
   const horizon = rollingHorizon()
@@ -63,8 +65,10 @@ export async function createRecurringSeries(input: RecurringSeriesInput) {
   return prisma.$transaction(async (tx) => {
     const series = await tx.recurringSeries.create({
       data: {
-        studentId: input.studentId,
+        studentId: type === 'private' ? input.studentId : null,
         instructorId: input.instructorId,
+        type,
+        title: type === 'group' ? input.title : null,
         dayOfWeek,
         startTime: input.startTime,
         endTime: input.endTime,
@@ -74,8 +78,10 @@ export async function createRecurringSeries(input: RecurringSeriesInput) {
     for (const [index, iso] of occurrenceDates.entries()) {
       await tx.lesson.create({
         data: {
-          studentId: input.studentId,
+          studentId: type === 'private' ? input.studentId : null,
           instructorId: input.instructorId,
+          type,
+          title: type === 'group' ? input.title : null,
           startTime: combineDateAndTime(iso, input.startTime),
           endTime: combineDateAndTime(iso, input.endTime),
           // Only the first occurrence gets the note entered at creation time —
@@ -179,6 +185,8 @@ export async function extendAllActiveSeries() {
           data: {
             studentId: series.studentId,
             instructorId: series.instructorId,
+            type: series.type,
+            title: series.title,
             startTime: occStart,
             endTime: occEnd,
             recurringSeriesId: series.id,

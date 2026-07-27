@@ -1,9 +1,21 @@
-import type { MembershipBillingFrequency } from '../../shared/types'
+import type { MembershipBillingFrequency, MembershipStatus } from '../../shared/types'
 
 export const FREQUENCY_LABEL: Record<MembershipBillingFrequency, string> = {
   weekly: 'Weekly',
   biweekly: 'Every 2 weeks',
   monthly: 'Monthly',
+}
+
+export const MEMBERSHIP_STATUS_LABEL: Record<MembershipStatus, string> = {
+  ok: 'OK',
+  due_soon: 'Due soon',
+  overdue: 'Overdue',
+}
+
+export const MEMBERSHIP_STATUS_COLOR: Record<MembershipStatus, string> = {
+  ok: 'text-green-500',
+  due_soon: 'text-amber-500',
+  overdue: 'text-destructive',
 }
 
 export function formatCents(cents: number) {

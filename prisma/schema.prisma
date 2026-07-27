@@ -73,17 +73,22 @@ model Instructor {
 // lesson, not the series, so only the first generated occurrence gets the
 // note entered at creation time and every later one starts blank.
 model RecurringSeries {
-  id             String     @id @default(cuid())
-  student        Student    @relation(fields: [studentId], references: [id])
-  studentId      String
-  instructor     Instructor @relation(fields: [instructorId], references: [id])
+  id             String      @id @default(cuid())
+  // Group series have no student — see the "type" comment on Lesson below.
+  student        Student?    @relation(fields: [studentId], references: [id])
+  studentId      String?
+  instructor     Instructor  @relation(fields: [instructorId], references: [id])
   instructorId   String
+  // "private" | "group" — see Lesson.type.
+  type           String      @default("private")
+  // Group class name (e.g. "Cardio"); null for private series.
+  title          String?
   dayOfWeek      Int
   startTime      String
   endTime        String
-  active         Boolean    @default(true)
+  active         Boolean     @default(true)
   generatedUntil DateTime
-  createdAt      DateTime   @default(now())
+  createdAt      DateTime    @default(now())
   lessons        Lesson[]
 
   @@index([studentId])
@@ -103,10 +108,18 @@ model BusinessHours {
 // Valid values are enforced in application code: "scheduled" | "completed" | "cancelled" | "no_show"
 model Lesson {
   id                String           @id @default(cuid())
-  student           Student          @relation(fields: [studentId], references: [id])
-  studentId         String
+  // Group lessons have no assigned student — group classes have no
+  // per-student roster in this app, they're just a block on an instructor's
+  // schedule. Enforced in application code: "private" requires studentId
+  // (and no title); "group" requires title (and no studentId).
+  student           Student?         @relation(fields: [studentId], references: [id])
+  studentId         String?
   instructor        Instructor       @relation(fields: [instructorId], references: [id])
   instructorId      String
+  // "private" | "group"
+  type              String           @default("private")
+  // Group class name (e.g. "Cardio", "Shootfighting"); null for private lessons.
+  title             String?
   startTime         DateTime
   endTime           DateTime
   status            String           @default("scheduled")

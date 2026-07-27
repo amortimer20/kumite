@@ -4,6 +4,23 @@ import type { LessonInput, LessonListFilter, LessonStatus } from '../../shared/t
 
 const include = { student: true, instructor: true } as const
 
+// "private" requires a student (and no title); "group" requires a title
+// (and no student) — SQLite has no enum support, so this is enforced here
+// rather than at the schema level, same as LessonStatus.
+export function assertValidLessonInput(
+  type: string,
+  studentId: string | null | undefined,
+  title: string | null | undefined,
+) {
+  if (type === 'private') {
+    if (!studentId) throw new Error('A private lesson needs a student.')
+  } else if (type === 'group') {
+    if (!title) throw new Error('A group lesson needs a title.')
+  } else {
+    throw new Error(`Unknown lesson type: ${type}`)
+  }
+}
+
 export async function assertNoOverlap(
   instructorId: string,
   startTime: Date,
@@ -44,11 +61,15 @@ export function registerLessonHandlers() {
     if (endTime <= startTime) {
       throw new Error('Lesson end time must be after the start time.')
     }
+    const type = input.type ?? 'private'
+    assertValidLessonInput(type, input.studentId, input.title)
     await assertNoOverlap(input.instructorId, startTime, endTime)
     return prisma.lesson.create({
       data: {
-        studentId: input.studentId,
+        studentId: type === 'private' ? input.studentId : null,
         instructorId: input.instructorId,
+        type,
+        title: type === 'group' ? input.title : null,
         startTime,
         endTime,
         notes: input.notes,
@@ -62,15 +83,21 @@ export function registerLessonHandlers() {
     const startTime = input.startTime ? new Date(input.startTime) : existing.startTime
     const endTime = input.endTime ? new Date(input.endTime) : existing.endTime
     const instructorId = input.instructorId ?? existing.instructorId
+    const type = input.type ?? existing.type
+    const studentId = 'studentId' in input ? input.studentId : existing.studentId
+    const title = 'title' in input ? input.title : existing.title
     if (endTime <= startTime) {
       throw new Error('Lesson end time must be after the start time.')
     }
+    assertValidLessonInput(type, studentId, title)
     await assertNoOverlap(instructorId, startTime, endTime, id)
     return prisma.lesson.update({
       where: { id },
       data: {
-        studentId: input.studentId,
-        instructorId: input.instructorId,
+        studentId: type === 'private' ? studentId : null,
+        instructorId,
+        type,
+        title: type === 'group' ? title : null,
         startTime,
         endTime,
         notes: input.notes,

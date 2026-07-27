@@ -64,6 +64,7 @@ const api: Api = {
   },
   studentMemberships: {
     getForStudent: (studentId: string) => ipcRenderer.invoke('studentMemberships:getForStudent', studentId),
+    listActive: () => ipcRenderer.invoke('studentMemberships:listActive'),
     assign: (studentId: string, input: { planId: string; priceOverrideCents?: number | null; startDate: string }) =>
       ipcRenderer.invoke('studentMemberships:assign', studentId, input),
     update: (id: string, input: { planId?: string; priceOverrideCents?: number | null }) =>
