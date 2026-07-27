@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Clock, CreditCard, HardDrive, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import { MEMBERSHIP_BILLING_FREQUENCIES } from '../../shared/types'
@@ -41,7 +41,23 @@ const DAY_LABEL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 
 const EMPTY_PLAN_FORM = { title: '', billingFrequency: 'monthly' as MembershipBillingFrequency, price: '', includedPrivateLessons: '0' }
 
+const SECTIONS = ['hours', 'plans', 'backup'] as const
+type Section = (typeof SECTIONS)[number]
+
+const SECTION_LABEL: Record<Section, string> = {
+  hours: 'Business Hours',
+  plans: 'Membership Plans',
+  backup: 'Backup & Restore',
+}
+
+const SECTION_ICON: Record<Section, typeof Clock> = {
+  hours: Clock,
+  plans: CreditCard,
+  backup: HardDrive,
+}
+
 export function SettingsPanel() {
+  const [section, setSection] = useState<Section>('hours')
   const [hours, setHours] = useState<BusinessHours[]>([])
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
@@ -184,165 +200,195 @@ export function SettingsPanel() {
 
   return (
     <div className="panel">
-      <h2 className="mb-3 text-lg font-semibold">Business Hours</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Used on the Schedule tab to show open slots between lessons for each day.
-      </p>
-      <div className="flex flex-col gap-3">
-        {loading
-          ? showSkeleton
-            ? Array.from({ length: 7 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-4 border-b border-border pb-3 last:border-0">
-                  <Skeleton className="h-4 w-28" />
-                  <Skeleton className="h-5 w-10" />
-                  <Skeleton className="h-9 w-24" />
-                  <Skeleton className="h-9 w-24" />
-                </div>
-              ))
-            : null
-          : hours.map((h) => (
-              <div key={h.dayOfWeek} className="flex items-center gap-4 border-b border-border pb-3 last:border-0">
-                <span className="w-28 shrink-0 font-medium">{DAY_LABEL[h.dayOfWeek]}</span>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={!h.isClosed}
-                    onCheckedChange={(checked) => handleChange(h.dayOfWeek, { isClosed: !checked })}
-                  />
-                  <Label className="text-muted-foreground">{h.isClosed ? 'Closed' : 'Open'}</Label>
-                </div>
-                {!h.isClosed && (
-                  <>
-                    <Input
-                      type="time"
-                      className="w-auto"
-                      value={h.openTime}
-                      onChange={(e) => handleChange(h.dayOfWeek, { openTime: e.target.value })}
-                    />
-                    <span className="text-muted-foreground">to</span>
-                    <Input
-                      type="time"
-                      className="w-auto"
-                      value={h.closeTime}
-                      onChange={(e) => handleChange(h.dayOfWeek, { closeTime: e.target.value })}
-                    />
-                  </>
-                )}
-              </div>
-            ))}
-      </div>
-
-      <h2 className="mb-3 mt-8 text-lg font-semibold">Membership Plans</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Billing plans students can be assigned to (e.g. "2 Private, Unlimited Group"). The title is
-        descriptive — the app only tracks the private-lesson allowance, not group class attendance.
-      </p>
-      <form className="mb-4 flex flex-wrap items-center gap-2" onSubmit={handleAddPlan}>
-        <Input
-          className="w-56"
-          placeholder="Title"
-          value={addPlanForm.title}
-          onChange={(e) => setAddPlanForm((f) => ({ ...f, title: e.target.value }))}
-        />
-        <Select
-          key={addPlanFormKey}
-          value={addPlanForm.billingFrequency}
-          onValueChange={(v) => setAddPlanForm((f) => ({ ...f, billingFrequency: v as MembershipBillingFrequency }))}
-        >
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MEMBERSHIP_BILLING_FREQUENCIES.map((freq) => (
-              <SelectItem key={freq} value={freq}>{FREQUENCY_LABEL[freq]}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          className="w-28"
-          type="number"
-          step="0.01"
-          min="0"
-          placeholder="Price"
-          value={addPlanForm.price}
-          onChange={(e) => setAddPlanForm((f) => ({ ...f, price: e.target.value }))}
-        />
-        <Input
-          className="w-24"
-          type="number"
-          min="0"
-          placeholder="# Privates"
-          value={addPlanForm.includedPrivateLessons}
-          onChange={(e) => setAddPlanForm((f) => ({ ...f, includedPrivateLessons: e.target.value }))}
-        />
-        <Button type="submit">Add Plan</Button>
-      </form>
-      {addPlanError && <p className="mb-4 text-sm text-destructive">{addPlanError}</p>}
-      <label className="mb-3 flex w-fit items-center gap-2 text-sm text-muted-foreground">
-        <Checkbox checked={showArchivedPlans} onCheckedChange={(checked) => setShowArchivedPlans(checked === true)} />
-        Show archived
-      </label>
-      <Table className="table-fixed">
-        <TableHeader>
-          <TableRow>
-            <TableHead>Title</TableHead>
-            <TableHead className="w-36">Frequency</TableHead>
-            <TableHead className="w-28">Price</TableHead>
-            <TableHead className="w-28">Privates</TableHead>
-            <TableHead className="w-24">Students</TableHead>
-            <TableHead className="w-40" />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {plansLoading ? (
-            showPlansSkeleton ? <TableSkeletonRows columns={6} /> : null
-          ) : (
+      <h2 className="mb-3 text-lg font-semibold">Settings</h2>
+      <div className="flex gap-6">
+        <nav className="flex w-48 shrink-0 flex-col gap-1">
+          {SECTIONS.map((s) => {
+            const Icon = SECTION_ICON[s]
+            return (
+              <Button
+                key={s}
+                variant={s === section ? 'default' : 'ghost'}
+                className="justify-start"
+                onClick={() => setSection(s)}
+              >
+                <Icon />
+                {SECTION_LABEL[s]}
+              </Button>
+            )
+          })}
+        </nav>
+        <div className="min-w-0 flex-1">
+          {section === 'hours' && (
             <>
-              {plans
-                .filter((p) => showArchivedPlans || p.active)
-                .map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="truncate">
-                      {p.title}
-                      {!p.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
-                    </TableCell>
-                    <TableCell>{FREQUENCY_LABEL[p.billingFrequency]}</TableCell>
-                    <TableCell>{formatCents(p.priceCents)}</TableCell>
-                    <TableCell>{p.includedPrivateLessons}</TableCell>
-                    <TableCell>{p.studentCount}</TableCell>
-                    <TableCell className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openEditPlan(p)}>Edit</Button>
-                      {p.active ? (
-                        <Button variant="destructive" size="sm" onClick={() => handleDeletePlan(p)}><Trash2 />Delete</Button>
-                      ) : (
-                        <Button variant="outline" size="sm" onClick={() => handleReactivatePlan(p)}>Reactivate</Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              {plans.filter((p) => showArchivedPlans || p.active).length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center italic text-muted-foreground">No membership plans yet.</TableCell>
-                </TableRow>
-              )}
+              <p className="mb-4 text-sm text-muted-foreground">
+                Used on the Schedule tab to show open slots between lessons for each day.
+              </p>
+              <div className="flex flex-col gap-3">
+                {loading
+                  ? showSkeleton
+                    ? Array.from({ length: 7 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-4 border-b border-border pb-3 last:border-0">
+                          <Skeleton className="h-4 w-28" />
+                          <Skeleton className="h-5 w-10" />
+                          <Skeleton className="h-9 w-24" />
+                          <Skeleton className="h-9 w-24" />
+                        </div>
+                      ))
+                    : null
+                  : hours.map((h) => (
+                      <div key={h.dayOfWeek} className="flex items-center gap-4 border-b border-border pb-3 last:border-0">
+                        <span className="w-28 shrink-0 font-medium">{DAY_LABEL[h.dayOfWeek]}</span>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={!h.isClosed}
+                            onCheckedChange={(checked) => handleChange(h.dayOfWeek, { isClosed: !checked })}
+                          />
+                          <Label className="text-muted-foreground">{h.isClosed ? 'Closed' : 'Open'}</Label>
+                        </div>
+                        {!h.isClosed && (
+                          <>
+                            <Input
+                              type="time"
+                              className="w-auto"
+                              value={h.openTime}
+                              onChange={(e) => handleChange(h.dayOfWeek, { openTime: e.target.value })}
+                            />
+                            <span className="text-muted-foreground">to</span>
+                            <Input
+                              type="time"
+                              className="w-auto"
+                              value={h.closeTime}
+                              onChange={(e) => handleChange(h.dayOfWeek, { closeTime: e.target.value })}
+                            />
+                          </>
+                        )}
+                      </div>
+                    ))}
+              </div>
             </>
           )}
-        </TableBody>
-      </Table>
 
-      <h2 className="mb-3 mt-8 text-lg font-semibold">Backup & Restore</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Export a backup file to keep a copy of your data — for example in a synced folder like
-        OneDrive or Dropbox. Restoring loads a backup file back in, replacing all current data.
-      </p>
-      <div className="flex items-center gap-2">
-        <Button variant="outline" onClick={handleBackup} disabled={restoring}>
-          Export Backup
-        </Button>
-        <Button variant="destructive" onClick={handleRestore} disabled={restoring}>
-          Restore from Backup
-        </Button>
+          {section === 'plans' && (
+            <>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Billing plans students can be assigned to (e.g. "2 Private, Unlimited Group"). The title is
+                descriptive — the app only tracks the private-lesson allowance, not group class attendance.
+              </p>
+              <form className="mb-4 flex flex-wrap items-center gap-2" onSubmit={handleAddPlan}>
+                <Input
+                  className="w-56"
+                  placeholder="Title"
+                  value={addPlanForm.title}
+                  onChange={(e) => setAddPlanForm((f) => ({ ...f, title: e.target.value }))}
+                />
+                <Select
+                  key={addPlanFormKey}
+                  value={addPlanForm.billingFrequency}
+                  onValueChange={(v) => setAddPlanForm((f) => ({ ...f, billingFrequency: v as MembershipBillingFrequency }))}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {MEMBERSHIP_BILLING_FREQUENCIES.map((freq) => (
+                      <SelectItem key={freq} value={freq}>{FREQUENCY_LABEL[freq]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  className="w-28"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Price"
+                  value={addPlanForm.price}
+                  onChange={(e) => setAddPlanForm((f) => ({ ...f, price: e.target.value }))}
+                />
+                <Input
+                  className="w-24"
+                  type="number"
+                  min="0"
+                  placeholder="# Privates"
+                  value={addPlanForm.includedPrivateLessons}
+                  onChange={(e) => setAddPlanForm((f) => ({ ...f, includedPrivateLessons: e.target.value }))}
+                />
+                <Button type="submit">Add Plan</Button>
+              </form>
+              {addPlanError && <p className="mb-4 text-sm text-destructive">{addPlanError}</p>}
+              <label className="mb-3 flex w-fit items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox checked={showArchivedPlans} onCheckedChange={(checked) => setShowArchivedPlans(checked === true)} />
+                Show archived
+              </label>
+              <Table className="table-fixed">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead className="w-36">Frequency</TableHead>
+                    <TableHead className="w-28">Price</TableHead>
+                    <TableHead className="w-28">Privates</TableHead>
+                    <TableHead className="w-24">Students</TableHead>
+                    <TableHead className="w-40" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {plansLoading ? (
+                    showPlansSkeleton ? <TableSkeletonRows columns={6} /> : null
+                  ) : (
+                    <>
+                      {plans
+                        .filter((p) => showArchivedPlans || p.active)
+                        .map((p) => (
+                          <TableRow key={p.id}>
+                            <TableCell className="truncate">
+                              {p.title}
+                              {!p.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
+                            </TableCell>
+                            <TableCell>{FREQUENCY_LABEL[p.billingFrequency]}</TableCell>
+                            <TableCell>{formatCents(p.priceCents)}</TableCell>
+                            <TableCell>{p.includedPrivateLessons}</TableCell>
+                            <TableCell>{p.studentCount}</TableCell>
+                            <TableCell className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={() => openEditPlan(p)}>Edit</Button>
+                              {p.active ? (
+                                <Button variant="destructive" size="sm" onClick={() => handleDeletePlan(p)}><Trash2 />Delete</Button>
+                              ) : (
+                                <Button variant="outline" size="sm" onClick={() => handleReactivatePlan(p)}>Reactivate</Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      {plans.filter((p) => showArchivedPlans || p.active).length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center italic text-muted-foreground">No membership plans yet.</TableCell>
+                        </TableRow>
+                      )}
+                    </>
+                  )}
+                </TableBody>
+              </Table>
+            </>
+          )}
+
+          {section === 'backup' && (
+            <>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Export a backup file to keep a copy of your data — for example in a synced folder like
+                OneDrive or Dropbox. Restoring loads a backup file back in, replacing all current data.
+              </p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={handleBackup} disabled={restoring}>
+                  Export Backup
+                </Button>
+                <Button variant="destructive" onClick={handleRestore} disabled={restoring}>
+                  Restore from Backup
+                </Button>
+              </div>
+              {restoring && <p className="mt-3 text-sm text-muted-foreground">Restoring backup, the app will restart…</p>}
+            </>
+          )}
+        </div>
       </div>
-      {restoring && <p className="mt-3 text-sm text-muted-foreground">Restoring backup, the app will restart…</p>}
 
       <Dialog open={editingPlan !== null} onOpenChange={(open) => !open && setEditingPlan(null)}>
         <DialogContent className="sm:max-w-md">
