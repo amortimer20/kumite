@@ -69,6 +69,13 @@ function toFormValues(student: Student): StudentInput {
   }
 }
 
+function matchesSearch(student: Student, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [student.firstName, student.lastName, student.email, student.phone, student.rank]
+    .some((field) => field?.toLowerCase().includes(q))
+}
+
 function normalize(form: StudentInput): StudentInput {
   return {
     firstName: form.firstName.trim(),
@@ -112,6 +119,7 @@ export function StudentsPanel() {
   const [familyFormKey, setFamilyFormKey] = useState(0)
 
   const [showArchived, setShowArchived] = useState(false)
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
 
@@ -285,6 +293,8 @@ export function StudentsPanel() {
     handleDeleteThisAndFutureLessons,
   } = useLessonDelete(refreshStudentLessons)
 
+  const visibleStudents = students.filter((s) => (showArchived || s.active) && matchesSearch(s, search))
+
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Students</h2>
@@ -330,10 +340,18 @@ export function StudentsPanel() {
         <Button type="submit">Add Student</Button>
       </form>
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
-      <label className="mb-3 flex w-fit items-center gap-2 text-sm text-muted-foreground">
-        <Checkbox checked={showArchived} onCheckedChange={(checked) => setShowArchived(checked === true)} />
-        Show archived
-      </label>
+      <div className="mb-3 flex items-center gap-4">
+        <Input
+          className="w-64"
+          placeholder="Search students…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox checked={showArchived} onCheckedChange={(checked) => setShowArchived(checked === true)} />
+          Show archived
+        </label>
+      </div>
       <Table className="table-fixed">
         <TableHeader>
           <TableRow>
@@ -349,32 +367,32 @@ export function StudentsPanel() {
             showSkeleton ? <TableSkeletonRows columns={5} /> : null
           ) : (
             <>
-              {students
-                .filter((s) => showArchived || s.active)
-                .map((s) => (
-                  <TableRow key={s.id}>
-                    <TableCell className="truncate">
-                      {s.firstName} {s.lastName}
-                      {!s.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
-                    </TableCell>
-                    <TableCell>{s.rank ?? '—'}</TableCell>
-                    <TableCell className="truncate">{s.email ?? '—'}</TableCell>
-                    <TableCell>{s.phone ?? '—'}</TableCell>
-                    <TableCell className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setMembershipStudent(s)}><CreditCard />Membership</Button>
-                      <Button variant="outline" size="sm" onClick={() => openLessons(s)}><CalendarDays />Lessons</Button>
-                      <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
-                      {s.active ? (
-                        <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(s)}><Trash2 />Delete</Button>
-                      ) : (
-                        <Button variant="outline" size="sm" onClick={() => handleReactivate(s)}>Reactivate</Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              {students.filter((s) => showArchived || s.active).length === 0 && (
+              {visibleStudents.map((s) => (
+                <TableRow key={s.id}>
+                  <TableCell className="truncate">
+                    {s.firstName} {s.lastName}
+                    {!s.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
+                  </TableCell>
+                  <TableCell>{s.rank ?? '—'}</TableCell>
+                  <TableCell className="truncate">{s.email ?? '—'}</TableCell>
+                  <TableCell>{s.phone ?? '—'}</TableCell>
+                  <TableCell className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setMembershipStudent(s)}><CreditCard />Membership</Button>
+                    <Button variant="outline" size="sm" onClick={() => openLessons(s)}><CalendarDays />Lessons</Button>
+                    <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
+                    {s.active ? (
+                      <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(s)}><Trash2 />Delete</Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => handleReactivate(s)}>Reactivate</Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {visibleStudents.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center italic text-muted-foreground">No students yet.</TableCell>
+                  <TableCell colSpan={5} className="text-center italic text-muted-foreground">
+                    {search.trim() ? 'No students match your search.' : 'No students yet.'}
+                  </TableCell>
                 </TableRow>
               )}
             </>

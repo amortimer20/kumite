@@ -2,14 +2,6 @@
 
 Feature ideas discussed but not yet implemented, roughly in the order we'd want to tackle them.
 
-## Search functionality
-Search across students/instructors (and maybe lessons). Considered a prerequisite/companion for bulk
-delete.
-
-## Bulk delete
-Let the user select and delete multiple students/instructors/lessons at once. Deferred until search
-exists, since search is how a user would narrow down what to bulk-act on.
-
 ## Balance-based membership payment status
 Membership status (`overdue`/`due_soon`/`ok`) is currently inferred from the `coversUntil` date on
 payments, which means splitting a month's payment into installments only shows correctly if staff
@@ -23,6 +15,13 @@ to keep `coversFrom`/`coversUntil` on payments as descriptive notes only, or dro
 form entirely since they'd no longer drive status.
 
 ## Done
+
+### Search functionality
+Students and Instructors panels each got a live, filter-as-you-type search box (name/email/phone/rank),
+next to the existing "Show archived" checkbox. Was originally scoped as a prerequisite for bulk delete;
+bulk delete was later dropped as unnecessary (deleting many students/instructors at once is rare enough
+not to be worth the added risk of a wrong selection wiping out multiple records), but the search itself
+stands on its own as the roster grows.
 
 ### Robust per-student lesson view
 Each student row in the Students panel now has a "Lessons" button that opens their full lesson history

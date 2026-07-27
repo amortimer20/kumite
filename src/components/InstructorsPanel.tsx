@@ -28,6 +28,13 @@ import {
 
 const EMPTY_EDIT_FORM = { firstName: '', lastName: '', email: '', phone: '' }
 
+function matchesSearch(instructor: Instructor, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return [instructor.firstName, instructor.lastName, instructor.email, instructor.phone]
+    .some((field) => field?.toLowerCase().includes(q))
+}
+
 function toFormValues(instructor: Instructor) {
   return {
     firstName: instructor.firstName,
@@ -50,6 +57,7 @@ export function InstructorsPanel() {
   const [editError, setEditError] = useState<string | null>(null)
 
   const [showArchived, setShowArchived] = useState(false)
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
 
@@ -138,6 +146,8 @@ export function InstructorsPanel() {
     }
   }
 
+  const visibleInstructors = instructors.filter((i) => (showArchived || i.active) && matchesSearch(i, search))
+
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Instructors</h2>
@@ -149,10 +159,18 @@ export function InstructorsPanel() {
         <Button type="submit">Add Instructor</Button>
       </form>
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
-      <label className="mb-3 flex w-fit items-center gap-2 text-sm text-muted-foreground">
-        <Checkbox checked={showArchived} onCheckedChange={(checked) => setShowArchived(checked === true)} />
-        Show archived
-      </label>
+      <div className="mb-3 flex items-center gap-4">
+        <Input
+          className="w-64"
+          placeholder="Search instructors…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <label className="flex w-fit items-center gap-2 text-sm text-muted-foreground">
+          <Checkbox checked={showArchived} onCheckedChange={(checked) => setShowArchived(checked === true)} />
+          Show archived
+        </label>
+      </div>
       <Table className="table-fixed">
         <TableHeader>
           <TableRow>
@@ -167,29 +185,29 @@ export function InstructorsPanel() {
             showSkeleton ? <TableSkeletonRows columns={4} /> : null
           ) : (
             <>
-              {instructors
-                .filter((i) => showArchived || i.active)
-                .map((i) => (
-                  <TableRow key={i.id}>
-                    <TableCell className="truncate">
-                      {i.firstName} {i.lastName}
-                      {!i.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
-                    </TableCell>
-                    <TableCell className="truncate">{i.email ?? '—'}</TableCell>
-                    <TableCell>{i.phone ?? '—'}</TableCell>
-                    <TableCell className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => openEdit(i)}>Edit</Button>
-                      {i.active ? (
-                        <Button variant="destructive" size="sm" onClick={() => handleDelete(i)}><Trash2 />Delete</Button>
-                      ) : (
-                        <Button variant="outline" size="sm" onClick={() => handleReactivate(i)}>Reactivate</Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              {instructors.filter((i) => showArchived || i.active).length === 0 && (
+              {visibleInstructors.map((i) => (
+                <TableRow key={i.id}>
+                  <TableCell className="truncate">
+                    {i.firstName} {i.lastName}
+                    {!i.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
+                  </TableCell>
+                  <TableCell className="truncate">{i.email ?? '—'}</TableCell>
+                  <TableCell>{i.phone ?? '—'}</TableCell>
+                  <TableCell className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => openEdit(i)}>Edit</Button>
+                    {i.active ? (
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(i)}><Trash2 />Delete</Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => handleReactivate(i)}>Reactivate</Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+              {visibleInstructors.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center italic text-muted-foreground">No instructors yet.</TableCell>
+                  <TableCell colSpan={4} className="text-center italic text-muted-foreground">
+                    {search.trim() ? 'No instructors match your search.' : 'No instructors yet.'}
+                  </TableCell>
                 </TableRow>
               )}
             </>
