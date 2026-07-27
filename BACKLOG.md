@@ -14,6 +14,18 @@ delete.
 Let the user select and delete multiple students/instructors/lessons at once. Deferred until search
 exists, since search is how a user would narrow down what to bulk-act on.
 
+## Balance-based membership payment status
+Membership status (`overdue`/`due_soon`/`ok`) is currently inferred from the `coversUntil` date on
+payments, which means splitting a month's payment into installments only shows correctly if staff
+manually shorten each payment's date range to match the fraction paid — easy to get wrong, since the
+payment form defaults `coversUntil` to a full billing period regardless of amount entered.
+
+More robust: track a running balance instead — `owed = (billing periods elapsed since start) × price −
+(sum of all payments)`. Split payments then just work (pay half, owe half), and advance payments
+naturally produce a credit without needing to guess a future `coversUntil` date. Open question: whether
+to keep `coversFrom`/`coversUntil` on payments as descriptive notes only, or drop them from the payment
+form entirely since they'd no longer drive status.
+
 ## Instructor archive gap (non-delete path)
 When an instructor is *archived* (not deleted), their upcoming one-off (non-recurring) lessons aren't
 cleaned up the way the delete flow now does — only active recurring series get ended. The delete flow
