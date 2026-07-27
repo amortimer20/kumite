@@ -2,10 +2,6 @@
 
 Feature ideas discussed but not yet implemented, roughly in the order we'd want to tackle them.
 
-## In-app Help button
-Open the user handbook (`~/Desktop/Kumite Studio Handbook.docx`, or a copy bundled with the app) via
-Electron's `shell.openPath()`. Deferred until the handbook existed — it now does, so this is ready to build.
-
 ## Search functionality
 Search across students/instructors (and maybe lessons). Considered a prerequisite/companion for bulk
 delete.
@@ -26,15 +22,16 @@ naturally produce a credit without needing to guess a future `coversUntil` date.
 to keep `coversFrom`/`coversUntil` on payments as descriptive notes only, or drop them from the payment
 form entirely since they'd no longer drive status.
 
-## Instructor archive gap (non-delete path)
-When an instructor is *archived* (not deleted), their upcoming one-off (non-recurring) lessons aren't
-cleaned up the way the delete flow now does — only active recurring series get ended. The delete flow
-already handles this correctly; the archive-only path still has the gap. Low priority since archiving
-without cleanup isn't unsafe, just leaves stale-looking upcoming lessons for a departed instructor.
-
 ## Done
 
 ### Robust per-student lesson view
 Each student row in the Students panel now has a "Lessons" button that opens their full lesson history
 (past + upcoming), with per-lesson delete (including the recurring this-vs-future choice). Shipped in
 [1f9400b](https://github.com/amortimer20/kumite/commit/1f9400b).
+
+### Instructor archive gap (non-delete path)
+Turned out to already be fixed — [e4c83ea](https://github.com/amortimer20/kumite/commit/e4c83ea) (five
+days before this backlog entry was written) made `instructors:delete` clear upcoming lessons
+unconditionally, before deciding hard-delete vs. archive-fallback, so both outcomes were already clean.
+The entry was stale on arrival. Added a regression test (`electron/ipc/instructors.test.ts`) to lock in
+the archive-fallback behavior specifically, since it had no coverage before.

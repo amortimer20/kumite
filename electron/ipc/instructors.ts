@@ -18,6 +18,34 @@ function serializeInstructor<T extends { _count: { lessons: number } }>(instruct
   return { ...rest, upcomingLessonCount: _count.lessons }
 }
 
+// Deleting an instructor always clears their upcoming lessons first (real
+// history — completed/no_show — is never touched here) *before* deciding
+// whether the instructor itself hard-deletes or falls back to archiving —
+// so both outcomes leave no stale upcoming lessons behind, one-off or
+// recurring-series-generated alike.
+export async function deleteInstructor(id: string) {
+  await prisma.$transaction([
+    prisma.lesson.deleteMany({ where: { instructorId: id, status: notYetHappened } }),
+    // Only series with no historical lessons left can be removed — one
+    // that still has a completed/no_show lesson pointing at it would
+    // hit the same foreign-key wall as the instructor itself.
+    prisma.recurringSeries.deleteMany({
+      where: { instructorId: id, lessons: { none: { status: { in: ['completed', 'no_show'] } } } },
+    }),
+  ])
+  try {
+    await prisma.instructor.delete({ where: { id } })
+    return { archived: false }
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      await prisma.instructor.update({ where: { id }, data: { active: false } })
+      await endActiveSeriesForInstructor(id)
+      return { archived: true }
+    }
+    throw err
+  }
+}
+
 export function registerInstructorHandlers() {
   ipcMain.handle('instructors:list', async () => {
     const instructors = await prisma.instructor.findMany({
@@ -37,30 +65,5 @@ export function registerInstructorHandlers() {
     return serializeInstructor(instructor)
   })
 
-  // Deleting an instructor always clears their upcoming lessons first (real
-  // history — completed/no_show — is never touched here), then attempts the
-  // hard delete. If history still blocks it, falls back to archiving, same
-  // as students.
-  ipcMain.handle('instructors:delete', async (_event, id: string) => {
-    await prisma.$transaction([
-      prisma.lesson.deleteMany({ where: { instructorId: id, status: notYetHappened } }),
-      // Only series with no historical lessons left can be removed — one
-      // that still has a completed/no_show lesson pointing at it would
-      // hit the same foreign-key wall as the instructor itself.
-      prisma.recurringSeries.deleteMany({
-        where: { instructorId: id, lessons: { none: { status: { in: ['completed', 'no_show'] } } } },
-      }),
-    ])
-    try {
-      await prisma.instructor.delete({ where: { id } })
-      return { archived: false }
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
-        await prisma.instructor.update({ where: { id }, data: { active: false } })
-        await endActiveSeriesForInstructor(id)
-        return { archived: true }
-      }
-      throw err
-    }
-  })
+  ipcMain.handle('instructors:delete', (_event, id: string) => deleteInstructor(id))
 }
