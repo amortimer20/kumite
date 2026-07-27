@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import { prisma } from '../db.ts'
 import { assertNoOverlap, assertValidLessonInput } from './lessons.ts'
+import { addDaysIso, combineDateAndTime, computeOccurrenceDates, isoDateOf } from '../recurringSeriesLogic.ts'
 import type { RecurringSeriesInput } from '../../shared/types.ts'
 
 const lessonInclude = { student: true, instructor: true } as const
@@ -8,21 +9,6 @@ const lessonInclude = { student: true, instructor: true } as const
 // How far ahead occurrences are kept generated. Extended forward on every app
 // startup by extendAllActiveSeries() so the window keeps rolling with time.
 const ROLLING_WINDOW_WEEKS = 12
-
-function isoDateOf(d: Date) {
-  const offsetMs = d.getTimezoneOffset() * 60_000
-  return new Date(d.getTime() - offsetMs).toISOString().slice(0, 10)
-}
-
-function addDaysIso(isoDate: string, days: number) {
-  const d = new Date(`${isoDate}T00:00:00`)
-  d.setDate(d.getDate() + days)
-  return isoDateOf(d)
-}
-
-function combineDateAndTime(isoDate: string, time: string) {
-  return new Date(`${isoDate}T${time}:00`)
-}
 
 function rollingHorizon() {
   const horizon = new Date()
@@ -41,15 +27,7 @@ export async function createRecurringSeries(input: RecurringSeriesInput) {
 
   const dayOfWeek = new Date(`${input.startDate}T00:00:00`).getDay()
   const horizon = rollingHorizon()
-
-  const occurrenceDates: string[] = []
-  for (
-    let iso = input.startDate;
-    combineDateAndTime(iso, input.startTime) <= horizon;
-    iso = addDaysIso(iso, 7)
-  ) {
-    occurrenceDates.push(iso)
-  }
+  const occurrenceDates = computeOccurrenceDates(input.startDate, input.startTime, horizon)
 
   // Validate the whole initial batch up front so creation is all-or-nothing.
   for (const iso of occurrenceDates) {

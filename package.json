@@ -8,6 +8,8 @@
     "build": "tsc && vite build && electron-builder",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
+    "test": "npm rebuild better-sqlite3 && (vitest run; code=$?; electron-rebuild -f -w better-sqlite3; exit $code)",
+    "test:watch": "npm rebuild better-sqlite3; vitest; electron-rebuild -f -w better-sqlite3",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
@@ -53,7 +55,8 @@
     "typescript": "^5.2.2",
     "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.6",
-    "vite-plugin-electron-renderer": "^0.14.5"
+    "vite-plugin-electron-renderer": "^0.14.5",
+    "vitest": "^4.1.10"
   },
   "main": "dist-electron/main.js",
   "allowScripts": {
