@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import { Prisma } from '../../generated/prisma/client.ts'
 import { prisma } from '../db.ts'
-import { computeMembershipStatus, computeUsage, currentPeriodBounds } from '../membershipLogic.ts'
+import { computeMembershipBalance, computeMembershipStatus, computeUsage, currentPeriodBounds } from '../membershipLogic.ts'
 import type {
   MembershipPaymentInput,
   MembershipPlanInput,
@@ -36,7 +36,7 @@ type MembershipForSerialize = {
   startDate: Date
   priceOverrideCents: number | null
   plan: { priceCents: number; billingFrequency: string; includedPrivateLessons: number; _count: { studentMemberships: number } }
-  payments: { coversUntil: Date }[]
+  payments: { amountCents: number }[]
   usageAdjustments: { delta: number; createdAt: Date }[]
 }
 
@@ -44,9 +44,14 @@ async function serializeStudentMembership<T extends MembershipForSerialize>(memb
   const now = new Date()
   const { periodStart, periodEnd } = currentPeriodBounds(membership.startDate, membership.plan.billingFrequency, now)
 
-  const nextDueDate = membership.payments.reduce(
-    (max, p) => (p.coversUntil > max ? p.coversUntil : max),
+  const effectivePriceCents = membership.priceOverrideCents ?? membership.plan.priceCents
+  const totalPaidCents = membership.payments.reduce((sum, p) => sum + p.amountCents, 0)
+  const { owedCents, nextDueDate } = computeMembershipBalance(
     membership.startDate,
+    membership.plan.billingFrequency,
+    now,
+    effectivePriceCents,
+    totalPaidCents,
   )
 
   const status = computeMembershipStatus(nextDueDate, now)
@@ -70,11 +75,12 @@ async function serializeStudentMembership<T extends MembershipForSerialize>(memb
   return {
     ...rest,
     plan: serializeMembershipPlan(plan),
-    effectivePriceCents: rest.priceOverrideCents ?? plan.priceCents,
+    effectivePriceCents,
     currentPeriodStart: periodStart,
     currentPeriodEnd: periodEnd,
     nextDueDate,
     status,
+    amountOwedCents: owedCents,
     privateLessonsUsed,
     privateLessonsRemaining,
   }
@@ -214,19 +220,12 @@ export async function recordMembershipPayment(id: string, input: MembershipPayme
   if (input.amountCents <= 0) {
     throw new Error('Payment amount must be greater than zero.')
   }
-  const coversFrom = new Date(input.coversFrom)
-  const coversUntil = new Date(input.coversUntil)
-  if (coversUntil <= coversFrom) {
-    throw new Error('Coverage end date must be after the start date.')
-  }
   await prisma.membershipPayment.create({
     data: {
       studentMembershipId: id,
       amountCents: input.amountCents,
       method: input.method,
       paidOn: new Date(input.paidOn),
-      coversFrom,
-      coversUntil,
       notes: input.notes,
     },
   })

@@ -66,58 +66,61 @@ describe('recordMembershipPayment', () => {
     const plan = await makePlan()
     const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
     await expect(
-      recordMembershipPayment(membership.id, {
-        amountCents: 0,
-        paidOn: new Date().toISOString(),
-        coversFrom: new Date().toISOString(),
-        coversUntil: new Date(Date.now() + 86_400_000).toISOString(),
-      }),
+      recordMembershipPayment(membership.id, { amountCents: 0, paidOn: new Date().toISOString() }),
     ).rejects.toThrow('Payment amount must be greater than zero.')
   })
 
-  it('rejects coversUntil at or before coversFrom', async () => {
+  it('a payment matching the plan price clears the balance', async () => {
     const student = await makeStudent()
     const plan = await makePlan()
     const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
-    const now = new Date().toISOString()
-    await expect(
-      recordMembershipPayment(membership.id, { amountCents: 1000, paidOn: now, coversFrom: now, coversUntil: now }),
-    ).rejects.toThrow('Coverage end date must be after the start date.')
-  })
-
-  it('records a valid payment and pushes nextDueDate out to coversUntil', async () => {
-    const student = await makeStudent()
-    const plan = await makePlan()
-    const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
-    const coversUntil = new Date(Date.now() + 30 * 86_400_000)
     const updated = await recordMembershipPayment(membership.id, {
       amountCents: 8000,
       paidOn: new Date().toISOString(),
-      coversFrom: new Date().toISOString(),
-      coversUntil: coversUntil.toISOString(),
     })
-    expect(updated.nextDueDate.getTime()).toBe(coversUntil.getTime())
+    expect(updated.amountOwedCents).toBe(0)
     expect(updated.status).toBe('ok')
+  })
+
+  // The scenario the balance model exists to fix: splitting a period's
+  // payment into installments used to only show correctly if staff manually
+  // shortened a coversUntil date. Now it just works off the amounts alone.
+  it('a split payment leaves the remainder owed until the second half is paid', async () => {
+    const student = await makeStudent()
+    const plan = await makePlan()
+    const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
+
+    const afterFirstHalf = await recordMembershipPayment(membership.id, {
+      amountCents: 4000,
+      paidOn: new Date().toISOString(),
+    })
+    expect(afterFirstHalf.amountOwedCents).toBe(4000)
+    expect(afterFirstHalf.status).toBe('overdue')
+
+    const afterSecondHalf = await recordMembershipPayment(membership.id, {
+      amountCents: 4000,
+      paidOn: new Date().toISOString(),
+    })
+    expect(afterSecondHalf.amountOwedCents).toBe(0)
+    expect(afterSecondHalf.status).toBe('ok')
   })
 })
 
 describe('deleteMembershipPayment', () => {
-  it('recomputes status after removing the only payment', async () => {
+  it('recomputes the balance after removing the only payment', async () => {
     const student = await makeStudent()
     const plan = await makePlan()
     const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
     const withPayment = await recordMembershipPayment(membership.id, {
       amountCents: 8000,
       paidOn: new Date().toISOString(),
-      coversFrom: new Date().toISOString(),
-      coversUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     })
     expect(withPayment.payments.length).toBe(1)
+    expect(withPayment.amountOwedCents).toBe(0)
 
     const afterDelete = await deleteMembershipPayment(withPayment.payments[0].id)
     expect(afterDelete.payments.length).toBe(0)
-    // No payments left, so nextDueDate falls back to startDate — already
-    // passed the instant it was assigned, hence overdue.
+    expect(afterDelete.amountOwedCents).toBe(8000)
     expect(afterDelete.status).toBe('overdue')
   })
 })
@@ -154,8 +157,6 @@ describe('cancelMembership / cancelActiveMembershipForStudent', () => {
     await recordMembershipPayment(membership.id, {
       amountCents: 8000,
       paidOn: new Date().toISOString(),
-      coversFrom: new Date().toISOString(),
-      coversUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     })
 
     await cancelMembership(membership.id)

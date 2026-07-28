@@ -7,11 +7,10 @@ import {
   FREQUENCY_LABEL,
   MEMBERSHIP_STATUS_COLOR,
   MEMBERSHIP_STATUS_LABEL,
-  advanceOnePeriod,
   dollarsToCents,
   formatCents,
 } from '@/lib/membershipFormat'
-import { dateToIso, isoDateToInstant, todayIso } from '@/lib/isoDate'
+import { isoDateToInstant, todayIso } from '@/lib/isoDate'
 import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,7 +39,7 @@ import {
 } from '@/components/ui/table'
 
 const EMPTY_ASSIGN_FORM = { planId: '', priceOverride: '', startDate: todayIso() }
-const EMPTY_PAYMENT_FORM = { amount: '', paidOn: todayIso(), coversFrom: '', coversUntil: '', method: '', notes: '' }
+const EMPTY_PAYMENT_FORM = { amount: '', paidOn: todayIso(), method: '', notes: '' }
 const EMPTY_ADJUSTMENT_FORM = { delta: '1', reason: '' }
 
 export function StudentMembershipDialog({
@@ -79,12 +78,14 @@ export function StudentMembershipDialog({
         priceOverride: m.priceOverrideCents != null ? (m.priceOverrideCents / 100).toFixed(2) : '',
       })
       setChangePlanKey((k) => k + 1)
-      const coversFrom = dateToIso(new Date(m.nextDueDate))
+      // Defaults to whatever's actually owed, so recording the payment they
+      // just handed over doesn't require re-typing the plan price — but
+      // still defaults to a full period if nothing's currently owed (e.g.
+      // paying the next cycle ahead of time).
+      const defaultAmountCents = m.amountOwedCents > 0 ? m.amountOwedCents : m.effectivePriceCents
       setPaymentForm({
-        amount: (m.effectivePriceCents / 100).toFixed(2),
+        amount: (defaultAmountCents / 100).toFixed(2),
         paidOn: todayIso(),
-        coversFrom,
-        coversUntil: dateToIso(advanceOnePeriod(coversFrom, m.plan.billingFrequency)),
         method: '',
         notes: '',
       })
@@ -149,16 +150,12 @@ export function StudentMembershipDialog({
     e.preventDefault()
     if (!membership || !student) return
     setPaymentError(null)
-    if (!paymentForm.amount || !paymentForm.paidOn || !paymentForm.coversFrom || !paymentForm.coversUntil) {
-      setPaymentError('Amount, paid-on date, and coverage range are required.')
+    if (!paymentForm.amount || !paymentForm.paidOn) {
+      setPaymentError('Amount and paid-on date are required.')
       return
     }
     if (dollarsToCents(paymentForm.amount) <= 0) {
       setPaymentError('Amount must be greater than zero.')
-      return
-    }
-    if (paymentForm.coversUntil <= paymentForm.coversFrom) {
-      setPaymentError('Coverage end date must be after the start date.')
       return
     }
     try {
@@ -166,8 +163,6 @@ export function StudentMembershipDialog({
         amountCents: dollarsToCents(paymentForm.amount),
         method: paymentForm.method.trim() || null,
         paidOn: isoDateToInstant(paymentForm.paidOn),
-        coversFrom: isoDateToInstant(paymentForm.coversFrom),
-        coversUntil: isoDateToInstant(paymentForm.coversUntil),
         notes: paymentForm.notes.trim() || null,
       })
       toast.success('Payment recorded.')
@@ -282,7 +277,12 @@ export function StudentMembershipDialog({
             <div className="rounded-lg border border-border bg-card p-3">
               <div className="flex items-center justify-between">
                 <span className="font-medium">{membership.plan.title}</span>
-                <span className={`text-sm font-medium ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{MEMBERSHIP_STATUS_LABEL[membership.status]}</span>
+                <div className="text-right">
+                  <span className={`text-sm font-medium ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{MEMBERSHIP_STATUS_LABEL[membership.status]}</span>
+                  {membership.amountOwedCents > 0 && (
+                    <p className={`text-xs ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{formatCents(membership.amountOwedCents)} owed</p>
+                  )}
+                </div>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">
                 {formatCents(membership.effectivePriceCents)} / {FREQUENCY_LABEL[membership.plan.billingFrequency].toLowerCase()}
@@ -351,27 +351,17 @@ export function StudentMembershipDialog({
                   value={paymentForm.paidOn}
                   onChange={(e) => setPaymentForm((f) => ({ ...f, paidOn: e.target.value }))}
                 />
-                <span className="text-sm text-muted-foreground">covers</span>
-                <Input
-                  className="w-40"
-                  type="date"
-                  title="Covers from"
-                  value={paymentForm.coversFrom}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, coversFrom: e.target.value }))}
-                />
-                <span className="text-sm text-muted-foreground">to</span>
-                <Input
-                  className="w-40"
-                  type="date"
-                  title="Covers until"
-                  value={paymentForm.coversUntil}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, coversUntil: e.target.value }))}
-                />
                 <Input
                   className="w-36"
                   placeholder="Method (optional)"
                   value={paymentForm.method}
                   onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
+                />
+                <Input
+                  className="w-48"
+                  placeholder="Notes (optional)"
+                  value={paymentForm.notes}
+                  onChange={(e) => setPaymentForm((f) => ({ ...f, notes: e.target.value }))}
                 />
                 <Button type="submit">Record Payment</Button>
               </div>
@@ -383,8 +373,8 @@ export function StudentMembershipDialog({
                 <TableRow>
                   <TableHead className="w-24">Paid</TableHead>
                   <TableHead className="w-20">Amount</TableHead>
-                  <TableHead>Covers</TableHead>
                   <TableHead className="w-28">Method</TableHead>
+                  <TableHead>Notes</TableHead>
                   <TableHead className="w-28" />
                 </TableRow>
               </TableHeader>
@@ -401,10 +391,8 @@ export function StudentMembershipDialog({
                       <TableRow key={payment.id}>
                         <TableCell>{new Date(payment.paidOn).toLocaleDateString()}</TableCell>
                         <TableCell>{formatCents(payment.amountCents)}</TableCell>
-                        <TableCell className="truncate">
-                          {new Date(payment.coversFrom).toLocaleDateString()} – {new Date(payment.coversUntil).toLocaleDateString()}
-                        </TableCell>
                         <TableCell className="truncate">{payment.method ?? '—'}</TableCell>
+                        <TableCell className="truncate">{payment.notes ?? '—'}</TableCell>
                         <TableCell>
                           <Button variant="destructive" size="sm" onClick={() => handleDeletePayment(payment)}><Trash2 />Delete</Button>
                         </TableCell>

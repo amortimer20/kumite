@@ -48,7 +48,11 @@ function MembershipRow({ membership }: { membership: StudentMembershipWithStuden
       </div>
       <div className="shrink-0 text-right">
         <p className={`text-xs font-medium ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{MEMBERSHIP_STATUS_LABEL[membership.status]}</p>
-        <p className="text-xs text-muted-foreground">Due {formatDate(membership.nextDueDate)}</p>
+        <p className="text-xs text-muted-foreground">
+          {membership.amountOwedCents > 0
+            ? `${formatCents(membership.amountOwedCents)} owed`
+            : `Due ${formatDate(membership.nextDueDate)}`}
+        </p>
       </div>
     </div>
   )

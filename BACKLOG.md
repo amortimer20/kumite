@@ -2,19 +2,23 @@
 
 Feature ideas discussed but not yet implemented, roughly in the order we'd want to tackle them.
 
-## Balance-based membership payment status
-Membership status (`overdue`/`due_soon`/`ok`) is currently inferred from the `coversUntil` date on
-payments, which means splitting a month's payment into installments only shows correctly if staff
-manually shorten each payment's date range to match the fraction paid — easy to get wrong, since the
-payment form defaults `coversUntil` to a full billing period regardless of amount entered.
-
-More robust: track a running balance instead — `owed = (billing periods elapsed since start) × price −
-(sum of all payments)`. Split payments then just work (pay half, owe half), and advance payments
-naturally produce a credit without needing to guess a future `coversUntil` date. Open question: whether
-to keep `coversFrom`/`coversUntil` on payments as descriptive notes only, or drop them from the payment
-form entirely since they'd no longer drive status.
+## Replace placeholder certificate templates
+The 9 rank certificate PDFs in `electron/certificates/templates/` (`yellow.pdf` through `black.pdf`,
+no `white.pdf` by design) are auto-generated placeholders from `scripts/generate-placeholder-certificates.ts`,
+not the studio's real certificate design. Swap in the official templates once they exist — same
+filenames/rank mapping (`electron/certificates/ranks.ts`) should drop in without other code changes,
+though text placement may need re-checking with `scripts/certificate-calibrate.ts`.
 
 ## Done
+
+### Balance-based membership payment status
+Status (`overdue`/`due_soon`/`ok`) is now computed from a real running balance — `owed = (billing
+periods elapsed since start) × price − (sum of all payments)` — instead of being inferred from a
+`coversUntil` date on payments. Split payments now just work (pay half, owe half shows correctly until
+the rest comes in); paying multiple periods ahead naturally produces a credit. `coversFrom`/`coversUntil`
+were dropped from `MembershipPayment` entirely (schema + payment form) since they no longer drive
+anything — a payment is now just amount, date paid, method, and notes. The Dashboard and per-student
+membership dialog both surface the actual dollar amount owed, not just a due date and status badge.
 
 ### Search functionality
 Students and Instructors panels each got a live, filter-as-you-type search box (name/email/phone/rank),

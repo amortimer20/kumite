@@ -65,6 +65,49 @@ export function computeMembershipStatus(nextDueDate: Date, now: Date): Membershi
   return msUntilDue <= 0 ? 'overdue' : msUntilDue <= DUE_SOON_WINDOW_MS ? 'due_soon' : 'ok'
 }
 
+// Number of billing periods that have started as of `asOf`, counting the
+// period starting at `startDate` itself as the first one — billing is in
+// advance, so a period is owed for the instant it starts, not when it ends.
+export function periodsElapsed(startDate: Date, frequency: string, asOf: Date): number {
+  let periodStart = startDate
+  let count = 0
+  while (periodStart <= asOf) {
+    count++
+    periodStart = advancePeriod(periodStart, frequency)
+  }
+  return count
+}
+
+// Balance-based replacement for inferring status from payment coversUntil
+// dates: owed = (periods elapsed since start) x price - (total ever paid).
+// Split payments then just work (pay half, owe half) without staff having to
+// guess a coversUntil date, and paying multiple periods in advance naturally
+// produces a credit that covers future periods until it runs out.
+//
+// nextDueDate is the start of the first period not yet covered by total
+// payments — kept for continuity with the existing due-date display and so
+// computeMembershipStatus (which only needs a single date) doesn't change.
+export function computeMembershipBalance(
+  startDate: Date,
+  frequency: string,
+  asOf: Date,
+  priceCents: number,
+  totalPaidCents: number,
+): { owedCents: number; nextDueDate: Date } {
+  const elapsed = periodsElapsed(startDate, frequency, asOf)
+  // A $0 (comp) plan is always covered through the current period — avoids a
+  // divide-by-zero and matches "free" actually meaning never owed.
+  const periodsCovered = priceCents > 0 ? Math.floor(totalPaidCents / priceCents) : elapsed
+
+  let nextDueDate = startDate
+  for (let i = 0; i < periodsCovered; i++) {
+    nextDueDate = advancePeriod(nextDueDate, frequency)
+  }
+
+  const owedCents = Math.max(0, elapsed * priceCents - totalPaidCents)
+  return { owedCents, nextDueDate }
+}
+
 // A positive delta is a credit (e.g. "+1 bonus lesson"), so it reduces the
 // used count — giving the student more remaining, not less. Only adjustments
 // granted within the current period count toward it: a bonus is a one-time

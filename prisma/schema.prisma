@@ -180,10 +180,10 @@ model StudentMembership {
   @@index([planId])
 }
 
-// Each payment covers a date range rather than "one period," so paying
-// multiple cycles in advance is just a wider range — no separate credit
-// balance concept needed. "Next due date" is whatever comes after the
-// furthest coversUntil recorded for the membership.
+// Status is computed from a running balance (periods elapsed since the
+// membership's startDate x price, minus the sum of all payments) — a
+// payment is just an amount and a date, it doesn't need to describe which
+// period(s) it covers.
 model MembershipPayment {
   id                  String            @id @default(cuid())
   studentMembership   StudentMembership @relation(fields: [studentMembershipId], references: [id])
@@ -191,8 +191,6 @@ model MembershipPayment {
   amountCents         Int
   method              String?
   paidOn              DateTime
-  coversFrom          DateTime
-  coversUntil         DateTime
   notes               String?
   createdAt           DateTime          @default(now())
 

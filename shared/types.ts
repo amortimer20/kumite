@@ -14,7 +14,19 @@ export const STUDENT_RANKS = [
   'Brown 3rd',
   'Brown 2nd',
   'Brown 1st',
-  'Black',
+  // Black belt is a range of degrees, not a single rank — 1st is the entry
+  // degree, 10th the highest, ascending (unlike the kyu-style Brown degrees
+  // above, which count down as you approach black belt).
+  'Black 1st',
+  'Black 2nd',
+  'Black 3rd',
+  'Black 4th',
+  'Black 5th',
+  'Black 6th',
+  'Black 7th',
+  'Black 8th',
+  'Black 9th',
+  'Black 10th',
 ] as const
 
 export type StudentRank = (typeof STUDENT_RANKS)[number]
@@ -198,21 +210,14 @@ export interface MembershipPayment {
   amountCents: number
   method: string | null
   paidOn: string
-  coversFrom: string
-  coversUntil: string
   notes: string | null
   createdAt: string
 }
 
-// coversFrom/coversUntil describe the billing period(s) this payment settles
-// — a multi-cycle advance payment is just a wider range, not a separate
-// "credit" concept.
 export interface MembershipPaymentInput {
   amountCents: number
   method?: string | null
   paidOn: string
-  coversFrom: string
-  coversUntil: string
   notes?: string | null
 }
 
@@ -250,10 +255,14 @@ export interface StudentMembership {
   effectivePriceCents: number
   currentPeriodStart: string
   currentPeriodEnd: string
-  // Whatever comes after the furthest coversUntil across payments, or
-  // startDate if no payments have been recorded yet.
+  // Start of the first billing period not yet covered by total payments —
+  // see amountOwedCents below for how that's derived.
   nextDueDate: string
   status: MembershipStatus
+  // (periods elapsed since startDate x effectivePriceCents) - (sum of all
+  // payments), floored at 0. A split payment leaves the remainder here
+  // instead of silently reading as "paid in full."
+  amountOwedCents: number
   // Non-cancelled lessons in the current period, plus usage adjustments. A
   // lesson counts as soon as it's scheduled — only cancelling it releases
   // the slot — so nothing has to be marked "completed" for this to be accurate.

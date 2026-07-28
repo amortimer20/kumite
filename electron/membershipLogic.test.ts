@@ -3,9 +3,11 @@ import {
   DUE_SOON_WINDOW_MS,
   addMonthsClamped,
   advancePeriod,
+  computeMembershipBalance,
   computeMembershipStatus,
   computeUsage,
   currentPeriodBounds,
+  periodsElapsed,
 } from './membershipLogic.ts'
 
 describe('addMonthsClamped', () => {
@@ -98,6 +100,70 @@ describe('computeMembershipStatus', () => {
   it('is ok once past the due_soon window', () => {
     const dueDate = new Date(now.getTime() + DUE_SOON_WINDOW_MS + 1)
     expect(computeMembershipStatus(dueDate, now)).toBe('ok')
+  })
+})
+
+describe('periodsElapsed', () => {
+  it('counts the first period as elapsed the instant it starts', () => {
+    const startDate = new Date(2025, 0, 1)
+    expect(periodsElapsed(startDate, 'monthly', startDate)).toBe(1)
+  })
+
+  it('counts multiple elapsed periods', () => {
+    const startDate = new Date(2025, 0, 1)
+    const asOf = new Date(2025, 3, 10) // well into April
+    expect(periodsElapsed(startDate, 'monthly', asOf)).toBe(4) // Jan, Feb, Mar, Apr
+  })
+
+  it('is 0 if the membership has not started yet', () => {
+    const startDate = new Date(2025, 5, 1)
+    const asOf = new Date(2025, 4, 15)
+    expect(periodsElapsed(startDate, 'monthly', asOf)).toBe(0)
+  })
+})
+
+describe('computeMembershipBalance', () => {
+  const startDate = new Date(2025, 0, 1)
+  const priceCents = 10000
+
+  it('owes a full period with no payments, due immediately at startDate', () => {
+    const { owedCents, nextDueDate } = computeMembershipBalance(startDate, 'monthly', startDate, priceCents, 0)
+    expect(owedCents).toBe(10000)
+    expect(nextDueDate).toEqual(startDate)
+  })
+
+  it('owes nothing once the current period is fully paid', () => {
+    const { owedCents, nextDueDate } = computeMembershipBalance(startDate, 'monthly', startDate, priceCents, 10000)
+    expect(owedCents).toBe(0)
+    expect(nextDueDate).toEqual(new Date(2025, 1, 1))
+  })
+
+  // This is the split-payment scenario the balance model exists to fix:
+  // paying half up front used to be indistinguishable from paying in full
+  // unless staff manually shortened a coversUntil date. Here it just works.
+  it('a half payment leaves half the period owed, not fully paid', () => {
+    const { owedCents, nextDueDate } = computeMembershipBalance(startDate, 'monthly', startDate, priceCents, 5000)
+    expect(owedCents).toBe(5000)
+    expect(nextDueDate).toEqual(startDate) // still due — the period isn't fully covered yet
+  })
+
+  it('the second half payment then clears the balance', () => {
+    const { owedCents, nextDueDate } = computeMembershipBalance(startDate, 'monthly', startDate, priceCents, 10000)
+    expect(owedCents).toBe(0)
+    expect(nextDueDate).toEqual(new Date(2025, 1, 1))
+  })
+
+  it('paying multiple periods in advance produces a credit, not overdue status later', () => {
+    const asOf = new Date(2025, 1, 15) // into the 2nd period
+    const { owedCents, nextDueDate } = computeMembershipBalance(startDate, 'monthly', asOf, priceCents, 30000)
+    expect(owedCents).toBe(0)
+    expect(nextDueDate).toEqual(new Date(2025, 3, 1)) // paid through 3 periods
+  })
+
+  it('treats a $0 (comp) plan as always covered, never owing', () => {
+    const asOf = new Date(2025, 5, 15)
+    const { owedCents } = computeMembershipBalance(startDate, 'monthly', asOf, 0, 0)
+    expect(owedCents).toBe(0)
   })
 })
 
