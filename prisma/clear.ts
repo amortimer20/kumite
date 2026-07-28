@@ -21,9 +21,16 @@ async function main() {
     return
   }
 
-  // Children before parents, to respect foreign keys.
+  // Children before parents, to respect foreign keys. FamilyMember cascades
+  // automatically when its Student is deleted, so it needs no explicit
+  // delete here — but StudentMembership has no cascade relation to Student,
+  // so it (and everything under it) must be cleared before students are.
   await prisma.lesson.deleteMany()
   await prisma.recurringSeries.deleteMany()
+  await prisma.membershipUsageAdjustment.deleteMany()
+  await prisma.membershipPayment.deleteMany()
+  await prisma.studentMembership.deleteMany()
+  await prisma.membershipPlan.deleteMany()
   await prisma.student.deleteMany()
   await prisma.instructor.deleteMany()
   await prisma.businessHours.deleteMany()
