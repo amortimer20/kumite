@@ -45,6 +45,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 const EMPTY_FAMILY_FORM: FamilyMemberInput = { firstName: '', lastName: '', rank: null }
 
@@ -667,9 +668,20 @@ export function StudentsPanel() {
             {deleteModalStudent?.lessonCount === 1 ? '' : 's'} on the schedule. What would you like to do?
           </p>
           <DialogFooter className="sm:flex-col sm:gap-2">
-            <Button variant="outline" onClick={handleArchiveFromModal}>Archive (keep lesson history)</Button>
-            <Button variant="destructive" onClick={handleDeleteEverythingFromModal}>
-              <Trash2 />Delete permanently (also deletes {deleteModalStudent?.lessonCount} lessons and any membership/billing history)
+            <Button
+              variant="outline"
+              className="h-auto whitespace-normal text-left"
+              onClick={handleArchiveFromModal}
+            >
+              Archive (keep lesson history)
+            </Button>
+            <Button
+              variant="destructive"
+              className="h-auto whitespace-normal text-left"
+              onClick={handleDeleteEverythingFromModal}
+            >
+              <Trash2 className="shrink-0" />
+              Delete permanently (also deletes {deleteModalStudent?.lessonCount} lessons and any membership/billing history)
             </Button>
             <Button variant="ghost" onClick={() => setDeleteModalStudent(null)}>Cancel</Button>
           </DialogFooter>
@@ -714,7 +726,18 @@ export function StudentsPanel() {
                         </span>
                       </TableCell>
                       <TableCell>{STATUS_LABEL[lesson.status]}</TableCell>
-                      <TableCell className="truncate">{lesson.notes || '—'}</TableCell>
+                      <TableCell className="truncate">
+                        {lesson.notes ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="block truncate">{lesson.notes}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>{lesson.notes}</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
                       <TableCell>
                         <Button variant="destructive" size="sm" onClick={() => handleLessonDeleteClick(lesson)}><Trash2 />Delete</Button>
                       </TableCell>

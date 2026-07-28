@@ -29,6 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 function todayIsoDate() {
   const now = new Date()
@@ -413,17 +414,22 @@ export function SchedulePanel() {
                               }}
                             />
                           ) : (
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              className="block cursor-pointer truncate hover:underline"
-                              onClick={() => startEditingNotes(row.lesson)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') startEditingNotes(row.lesson)
-                              }}
-                            >
-                              {row.lesson.notes || <span className="italic text-muted-foreground">Add note</span>}
-                            </span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  className="block cursor-pointer truncate hover:underline"
+                                  onClick={() => startEditingNotes(row.lesson)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') startEditingNotes(row.lesson)
+                                  }}
+                                >
+                                  {row.lesson.notes || <span className="italic text-muted-foreground">Add note</span>}
+                                </span>
+                              </TooltipTrigger>
+                              {row.lesson.notes && <TooltipContent>{row.lesson.notes}</TooltipContent>}
+                            </Tooltip>
                           )}
                         </TableCell>
                         <TableCell>

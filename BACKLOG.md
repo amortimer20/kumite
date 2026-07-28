@@ -9,7 +9,31 @@ not the studio's real certificate design. Swap in the official templates once th
 filenames/rank mapping (`electron/certificates/ranks.ts`) should drop in without other code changes,
 though text placement may need re-checking with `scripts/certificate-calibrate.ts`.
 
+## Auto-updates
+There's currently no update mechanism at all — no `electron-updater`, no publish/feed config
+(`electron-builder.json5` has `publish: null` on purpose, to keep CI from trying to auto-detect a
+GitHub publish target). Right now, updating means manually rebuilding and reinstalling. Adding real
+auto-updates would mean picking a distribution channel (e.g. GitHub Releases), installing
+`electron-updater`, wiring up its events in `electron/main.ts`, and deciding on code-signing —
+enough scope to deserve its own session rather than being bundled into a bug-fix pass.
+
 ## Done
+
+### Testing-notes fixup pass
+Addressed a round of manual testing feedback: the Schedule instructor/type/student/status selects
+were using Radix's `item-aligned` positioning, which opens the popup centered on whichever item is
+currently selected — that's why the instructor dropdown seemed to open up/down/mid-screen
+depending on who was selected. Switched the shared `Select` to `popper` positioning app-wide, so
+every select now consistently drops from the trigger. Added a `Tooltip` component (didn't exist
+before) and wired it into the Schedule and Students-lessons notes cells so a long truncated note
+can be read on hover instead of only by clicking into edit mode. Fixed the Students delete-confirm
+modal's "Delete permanently…" button overflowing the dialog (the shared button style is
+`whitespace-nowrap`; let that one button wrap). Mirrored the Students Details-modal/overflow-menu
+pattern onto the Instructors panel (dropped Email/Phone columns, added a read-only Details dialog,
+moved Edit/Delete/Reactivate into the overflow menu). Added `flex-wrap` to the navbar so tabs flow
+to a second line instead of clipping on narrow window widths. Added a "Record Payment" button
+directly on each Dashboard membership row, opening that student's membership dialog (which already
+shows the payment form inline) without going through the per-student overflow menu.
 
 ### Student Details view
 Students panel now has a read-only "Details" modal (rank, email, phone, address, notes, family

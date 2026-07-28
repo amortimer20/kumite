@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { MoreHorizontal, Pencil, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import type { Instructor } from '../../shared/types'
@@ -17,6 +17,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -55,6 +62,8 @@ export function InstructorsPanel() {
   const [editingInstructor, setEditingInstructor] = useState<Instructor | null>(null)
   const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM)
   const [editError, setEditError] = useState<string | null>(null)
+
+  const [detailsInstructor, setDetailsInstructor] = useState<Instructor | null>(null)
 
   const [showArchived, setShowArchived] = useState(false)
   const [search, setSearch] = useState('')
@@ -118,6 +127,7 @@ export function InstructorsPanel() {
   }
 
   function openEdit(instructor: Instructor) {
+    setDetailsInstructor(null)
     setEditingInstructor(instructor)
     setEditForm(toFormValues(instructor))
     setEditError(null)
@@ -174,15 +184,13 @@ export function InstructorsPanel() {
       <Table className="table-fixed">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-48">Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead className="w-32">Phone</TableHead>
-            <TableHead className="w-40" />
+            <TableHead className="w-64">Name</TableHead>
+            <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
-            showSkeleton ? <TableSkeletonRows columns={4} /> : null
+            showSkeleton ? <TableSkeletonRows columns={2} /> : null
           ) : (
             <>
               {visibleInstructors.map((i) => (
@@ -191,21 +199,37 @@ export function InstructorsPanel() {
                     {i.firstName} {i.lastName}
                     {!i.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
                   </TableCell>
-                  <TableCell className="truncate">{i.email ?? '—'}</TableCell>
-                  <TableCell>{i.phone ?? '—'}</TableCell>
-                  <TableCell className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => openEdit(i)}>Edit</Button>
-                    {i.active ? (
-                      <Button variant="destructive" size="sm" onClick={() => handleDelete(i)}><Trash2 />Delete</Button>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => handleReactivate(i)}>Reactivate</Button>
-                    )}
+                  <TableCell className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setDetailsInstructor(i)}>Details</Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <MoreHorizontal />
+                          <span className="sr-only">More actions</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => openEdit(i)}>
+                          <Pencil />Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {i.active ? (
+                          <DropdownMenuItem variant="destructive" onSelect={() => handleDelete(i)}>
+                            <Trash2 />Delete
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onSelect={() => handleReactivate(i)}>
+                            <RotateCcw />Reactivate
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
               {visibleInstructors.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center italic text-muted-foreground">
+                  <TableCell colSpan={2} className="text-center italic text-muted-foreground">
                     {search.trim() ? 'No instructors match your search.' : 'No instructors yet.'}
                   </TableCell>
                 </TableRow>
@@ -214,6 +238,33 @@ export function InstructorsPanel() {
           )}
         </TableBody>
       </Table>
+
+      <Dialog open={detailsInstructor !== null} onOpenChange={(open) => !open && setDetailsInstructor(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {detailsInstructor?.firstName} {detailsInstructor?.lastName}
+              {detailsInstructor && !detailsInstructor.active && (
+                <span className="ml-2 text-xs italic font-normal text-muted-foreground">Archived</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 text-sm">
+            <div>
+              <Label className="mb-1 text-muted-foreground">Email</Label>
+              <p>{detailsInstructor?.email ?? '—'}</p>
+            </div>
+            <div>
+              <Label className="mb-1 text-muted-foreground">Phone</Label>
+              <p>{detailsInstructor?.phone ?? '—'}</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailsInstructor(null)}>Close</Button>
+            <Button onClick={() => detailsInstructor && openEdit(detailsInstructor)}>Edit</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editingInstructor !== null} onOpenChange={(open) => !open && setEditingInstructor(null)}>
         <DialogContent className="sm:max-w-md">

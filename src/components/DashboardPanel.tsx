@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { Users } from 'lucide-react'
 import { api } from '../api'
 import type { Instructor, Lesson, StudentMembershipWithStudent } from '../../shared/types'
+import { StudentMembershipDialog } from './StudentMembershipDialog'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { todayIso } from '@/lib/isoDate'
 import { STATUS_LABEL } from '@/lib/lessonStatus'
 import { MEMBERSHIP_STATUS_COLOR, MEMBERSHIP_STATUS_LABEL, formatCents } from '@/lib/membershipFormat'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
 function formatTime(iso: string) {
@@ -39,20 +41,29 @@ function groupByInstructor(lessons: Lesson[]): InstructorGroup[] {
   )
 }
 
-function MembershipRow({ membership }: { membership: StudentMembershipWithStudent }) {
+function MembershipRow({
+  membership,
+  onRecordPayment,
+}: {
+  membership: StudentMembershipWithStudent
+  onRecordPayment: () => void
+}) {
   return (
     <div className="flex items-center justify-between gap-2 py-1.5 text-sm">
       <div className="min-w-0">
         <p className="truncate">{membership.student.firstName} {membership.student.lastName}</p>
         <p className="truncate text-xs text-muted-foreground">{membership.plan.title} — {formatCents(membership.effectivePriceCents)}</p>
       </div>
-      <div className="shrink-0 text-right">
-        <p className={`text-xs font-medium ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{MEMBERSHIP_STATUS_LABEL[membership.status]}</p>
-        <p className="text-xs text-muted-foreground">
-          {membership.amountOwedCents > 0
-            ? `${formatCents(membership.amountOwedCents)} owed`
-            : `Due ${formatDate(membership.nextDueDate)}`}
-        </p>
+      <div className="flex shrink-0 items-center gap-3">
+        <div className="text-right">
+          <p className={`text-xs font-medium ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{MEMBERSHIP_STATUS_LABEL[membership.status]}</p>
+          <p className="text-xs text-muted-foreground">
+            {membership.amountOwedCents > 0
+              ? `${formatCents(membership.amountOwedCents)} owed`
+              : `Due ${formatDate(membership.nextDueDate)}`}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onRecordPayment}>Record Payment</Button>
       </div>
     </div>
   )
@@ -64,17 +75,20 @@ export function DashboardPanel() {
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
 
-  useEffect(() => {
+  const [paymentStudent, setPaymentStudent] = useState<StudentMembershipWithStudent['student'] | null>(null)
+
+  async function refresh() {
     const { start, end } = todayBounds()
-    Promise.all([
+    const [lessonsResult, membershipsResult] = await Promise.all([
       api.lessons.list({ start: start.toISOString(), end: end.toISOString() }),
       api.studentMemberships.listActive(),
     ])
-      .then(([lessonsResult, membershipsResult]) => {
-        setLessons(lessonsResult)
-        setMemberships(membershipsResult)
-      })
-      .finally(() => setLoading(false))
+    setLessons(lessonsResult)
+    setMemberships(membershipsResult)
+  }
+
+  useEffect(() => {
+    refresh().finally(() => setLoading(false))
   }, [])
 
   const instructorGroups = groupByInstructor(lessons)
@@ -141,7 +155,9 @@ export function DashboardPanel() {
                 <div>
                   <p className="mb-1 text-sm font-medium text-destructive">Overdue ({overdue.length})</p>
                   <div className="divide-y divide-border">
-                    {overdue.map((m) => <MembershipRow key={m.id} membership={m} />)}
+                    {overdue.map((m) => (
+                      <MembershipRow key={m.id} membership={m} onRecordPayment={() => setPaymentStudent(m.student)} />
+                    ))}
                   </div>
                 </div>
               )}
@@ -149,7 +165,9 @@ export function DashboardPanel() {
                 <div>
                   <p className="mb-1 text-sm font-medium text-amber-500">Due soon ({dueSoon.length})</p>
                   <div className="divide-y divide-border">
-                    {dueSoon.map((m) => <MembershipRow key={m.id} membership={m} />)}
+                    {dueSoon.map((m) => (
+                      <MembershipRow key={m.id} membership={m} onRecordPayment={() => setPaymentStudent(m.student)} />
+                    ))}
                   </div>
                 </div>
               )}
@@ -157,6 +175,16 @@ export function DashboardPanel() {
           )}
         </div>
       </div>
+
+      <StudentMembershipDialog
+        student={paymentStudent}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPaymentStudent(null)
+            refresh()
+          }
+        }}
+      />
     </div>
   )
 }
