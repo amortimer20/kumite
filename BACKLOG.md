@@ -11,6 +11,16 @@ though text placement may need re-checking with `scripts/certificate-calibrate.t
 
 ## Done
 
+### Student Details view
+Students panel now has a read-only "Details" modal (rank, email, phone, address, notes, family
+members) separate from editing, plus an "Edit" button inside it for when a change is actually
+needed. The row's remaining actions (Membership, Lessons, Edit) moved into an overflow (⋯) menu
+next to Details, with Delete/Reactivate kept as its own visible button so a destructive action is
+never buried in a dropdown; Email/Phone columns were dropped from the table since they're now a
+click away in Details. Along the way, fixed a real bug this surfaced: `Button` wasn't wrapped in
+`React.forwardRef`, so `DropdownMenuTrigger asChild` couldn't attach a ref to it, and Radix's
+Popper positioned the menu off-screen — fixed by forwarding the ref.
+
 ### Balance-based membership payment status
 Status (`overdue`/`due_soon`/`ok`) is now computed from a real running balance — `owed = (billing
 periods elapsed since start) × price − (sum of all payments)` — instead of being inferred from a

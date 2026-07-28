@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, CreditCard, Repeat, Trash2 } from 'lucide-react'
+import { CalendarDays, CreditCard, MoreHorizontal, Pencil, Repeat, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
@@ -30,6 +30,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Table,
   TableBody,
@@ -112,6 +119,8 @@ export function StudentsPanel() {
   const [studentLessonsLoading, setStudentLessonsLoading] = useState(false)
 
   const [membershipStudent, setMembershipStudent] = useState<Student | null>(null)
+
+  const [detailsStudent, setDetailsStudent] = useState<Student | null>(null)
 
   const [familyForm, setFamilyForm] = useState<FamilyMemberInput>(EMPTY_FAMILY_FORM)
   const [familyError, setFamilyError] = useState<string | null>(null)
@@ -197,6 +206,7 @@ export function StudentsPanel() {
   }
 
   function openEdit(student: Student) {
+    setDetailsStudent(null)
     setEditingStudent(student)
     setEditForm(toFormValues(student))
     setEditError(null)
@@ -355,16 +365,14 @@ export function StudentsPanel() {
       <Table className="table-fixed">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-48">Name</TableHead>
+            <TableHead className="w-64">Name</TableHead>
             <TableHead className="w-24">Rank</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead className="w-28">Phone</TableHead>
-            <TableHead className="w-96" />
+            <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
           {loading ? (
-            showSkeleton ? <TableSkeletonRows columns={5} /> : null
+            showSkeleton ? <TableSkeletonRows columns={3} /> : null
           ) : (
             <>
               {visibleStudents.map((s) => (
@@ -374,23 +382,43 @@ export function StudentsPanel() {
                     {!s.active && <span className="ml-2 text-xs italic text-muted-foreground">Archived</span>}
                   </TableCell>
                   <TableCell>{s.rank ?? '—'}</TableCell>
-                  <TableCell className="truncate">{s.email ?? '—'}</TableCell>
-                  <TableCell>{s.phone ?? '—'}</TableCell>
-                  <TableCell className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setMembershipStudent(s)}><CreditCard />Membership</Button>
-                    <Button variant="outline" size="sm" onClick={() => openLessons(s)}><CalendarDays />Lessons</Button>
-                    <Button variant="outline" size="sm" onClick={() => openEdit(s)}>Edit</Button>
-                    {s.active ? (
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteClick(s)}><Trash2 />Delete</Button>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => handleReactivate(s)}>Reactivate</Button>
-                    )}
+                  <TableCell className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setDetailsStudent(s)}>Details</Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <MoreHorizontal />
+                          <span className="sr-only">More actions</span>
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onSelect={() => setMembershipStudent(s)}>
+                          <CreditCard />Membership
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => openLessons(s)}>
+                          <CalendarDays />Lessons
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => openEdit(s)}>
+                          <Pencil />Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {s.active ? (
+                          <DropdownMenuItem variant="destructive" onSelect={() => handleDeleteClick(s)}>
+                            <Trash2 />Delete
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem onSelect={() => handleReactivate(s)}>
+                            <RotateCcw />Reactivate
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
               {visibleStudents.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center italic text-muted-foreground">
+                  <TableCell colSpan={3} className="text-center italic text-muted-foreground">
                     {search.trim() ? 'No students match your search.' : 'No students yet.'}
                   </TableCell>
                 </TableRow>
@@ -399,6 +427,71 @@ export function StudentsPanel() {
           )}
         </TableBody>
       </Table>
+
+      <Dialog open={detailsStudent !== null} onOpenChange={(open) => !open && setDetailsStudent(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {detailsStudent?.firstName} {detailsStudent?.lastName}
+              {detailsStudent && !detailsStudent.active && (
+                <span className="ml-2 text-xs italic font-normal text-muted-foreground">Archived</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="mb-1 text-muted-foreground">Rank</Label>
+                <p>{detailsStudent?.rank ?? '—'}</p>
+              </div>
+              <div>
+                <Label className="mb-1 text-muted-foreground">Phone</Label>
+                <p>{detailsStudent?.phone ?? '—'}</p>
+              </div>
+            </div>
+            <div>
+              <Label className="mb-1 text-muted-foreground">Email</Label>
+              <p>{detailsStudent?.email ?? '—'}</p>
+            </div>
+            <div>
+              <Label className="mb-1 text-muted-foreground">Address</Label>
+              <p>
+                {detailsStudent && (detailsStudent.street || detailsStudent.city || detailsStudent.state || detailsStudent.zip)
+                  ? [
+                      detailsStudent.street,
+                      [detailsStudent.city, detailsStudent.state].filter(Boolean).join(', '),
+                      detailsStudent.zip,
+                    ]
+                      .filter(Boolean)
+                      .join(' — ')
+                  : '—'}
+              </p>
+            </div>
+            <div>
+              <Label className="mb-1 text-muted-foreground">Notes</Label>
+              <p className="whitespace-pre-wrap">{detailsStudent?.notes || '—'}</p>
+            </div>
+            <div className="border-t border-border pt-3">
+              <Label className="mb-2 text-muted-foreground">Family Members</Label>
+              <div className="flex flex-col gap-1">
+                {detailsStudent?.familyMembers.map((fm) => (
+                  <p key={fm.id}>
+                    {fm.firstName} {fm.lastName}
+                    {fm.rank && <span className="text-muted-foreground"> — {fm.rank}</span>}
+                  </p>
+                ))}
+                {detailsStudent?.familyMembers.length === 0 && (
+                  <p className="italic text-muted-foreground">No family members added.</p>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDetailsStudent(null)}>Close</Button>
+            <Button onClick={() => detailsStudent && openEdit(detailsStudent)}>Edit</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={editingStudent !== null} onOpenChange={(open) => !open && setEditingStudent(null)}>
         <DialogContent className="sm:max-w-md">
