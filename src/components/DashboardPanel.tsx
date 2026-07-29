@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Users } from 'lucide-react'
+import { CalendarDays, DollarSign, Users } from 'lucide-react'
 import { api } from '../api'
-import type { Instructor, Lesson, StudentMembershipWithStudent } from '../../shared/types'
+import type { Instructor, Lesson, Student, StudentMembershipWithStudent } from '../../shared/types'
 import { StudentMembershipDialog } from './StudentMembershipDialog'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { todayIso } from '@/lib/isoDate'
@@ -21,6 +21,18 @@ function formatDate(iso: string) {
 function todayBounds() {
   const iso = todayIso()
   return { start: new Date(`${iso}T00:00:00`), end: new Date(`${iso}T23:59:59.999`) }
+}
+
+function StatTile({ icon: Icon, label, value }: { icon: typeof Users; label: string; value: string }) {
+  return (
+    <div className="flex min-w-40 flex-1 items-center gap-3 rounded-lg border border-border bg-card p-3">
+      <Icon className="size-5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="truncate text-lg font-semibold">{value}</p>
+        <p className="truncate text-xs text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  )
 }
 
 type InstructorGroup = { instructor: Instructor; lessons: Lesson[] }
@@ -70,6 +82,7 @@ function MembershipRow({
 }
 
 export function DashboardPanel() {
+  const [students, setStudents] = useState<Student[]>([])
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [memberships, setMemberships] = useState<StudentMembershipWithStudent[]>([])
   const [loading, setLoading] = useState(true)
@@ -79,10 +92,12 @@ export function DashboardPanel() {
 
   async function refresh() {
     const { start, end } = todayBounds()
-    const [lessonsResult, membershipsResult] = await Promise.all([
+    const [studentsResult, lessonsResult, membershipsResult] = await Promise.all([
+      api.students.list(),
       api.lessons.list({ start: start.toISOString(), end: end.toISOString() }),
       api.studentMemberships.listActive(),
     ])
+    setStudents(studentsResult)
     setLessons(lessonsResult)
     setMemberships(membershipsResult)
   }
@@ -90,6 +105,16 @@ export function DashboardPanel() {
   useEffect(() => {
     refresh().finally(() => setLoading(false))
   }, [])
+
+  const activeStudentCount = students.filter((s) => s.active).length
+  const collectedThisMonthCents = memberships
+    .flatMap((m) => m.payments)
+    .filter((p) => {
+      const paidOn = new Date(p.paidOn)
+      const now = new Date()
+      return paidOn.getMonth() === now.getMonth() && paidOn.getFullYear() === now.getFullYear()
+    })
+    .reduce((sum, p) => sum + p.amountCents, 0)
 
   const instructorGroups = groupByInstructor(lessons)
   const overdue = memberships
@@ -102,6 +127,21 @@ export function DashboardPanel() {
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Dashboard</h2>
+      <div className="mb-4 flex flex-wrap gap-4">
+        {showSkeleton ? (
+          <>
+            <Skeleton className="h-[60px] min-w-40 flex-1" />
+            <Skeleton className="h-[60px] min-w-40 flex-1" />
+            <Skeleton className="h-[60px] min-w-40 flex-1" />
+          </>
+        ) : (
+          <>
+            <StatTile icon={Users} label="Active students" value={String(activeStudentCount)} />
+            <StatTile icon={CalendarDays} label="Lessons today" value={String(lessons.length)} />
+            <StatTile icon={DollarSign} label="Collected this month" value={formatCents(collectedThisMonthCents)} />
+          </>
+        )}
+      </div>
       <div className="flex flex-wrap gap-4">
         <div className="min-w-72 flex-1 rounded-lg border border-border bg-card p-3">
           <h3 className="mb-2 font-medium">Today's Schedule</h3>

@@ -9,15 +9,24 @@ not the studio's real certificate design. Swap in the official templates once th
 filenames/rank mapping (`electron/certificates/ranks.ts`) should drop in without other code changes,
 though text placement may need re-checking with `scripts/certificate-calibrate.ts`.
 
-## Auto-updates
-There's currently no update mechanism at all — no `electron-updater`, no publish/feed config
-(`electron-builder.json5` has `publish: null` on purpose, to keep CI from trying to auto-detect a
-GitHub publish target). Right now, updating means manually rebuilding and reinstalling. Adding real
-auto-updates would mean picking a distribution channel (e.g. GitHub Releases), installing
-`electron-updater`, wiring up its events in `electron/main.ts`, and deciding on code-signing —
-enough scope to deserve its own session rather than being bundled into a bug-fix pass.
+## Verify the Windows installer end-to-end
+No in-app/over-the-air auto-updates — updates will just be a newer installer the studio re-runs
+each release. The NSIS config in `electron-builder.json5` is already set up for this
+(`perMachine: false` installs per-user to AppData with no admin prompt, `oneClick: false` shows an
+install wizard with a progress screen, and Start Menu/Desktop shortcuts are on by default) — running
+a newer installer over an existing install replaces it in place with no extra code needed. Still
+untested: do a real Windows build/install/upgrade pass to confirm it works as expected, and decide
+whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
+Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
 ## Done
+
+### Dashboard summary stat tiles
+Added three at-a-glance tiles above the existing Dashboard cards: active student count, lessons
+scheduled today, and total collected this calendar month (summed from active memberships'
+payments). Came out of a wider aesthetics review — two other suggestions from that review (table
+row hover tint, membership status colors) turned out to already be implemented, so no change was
+needed there.
 
 ### Testing-notes fixup pass
 Addressed a round of manual testing feedback: the Schedule instructor/type/student/status selects
