@@ -31,12 +31,14 @@ interface CertificateTemplate {
 // one layout across both regular and junior; Brown's regular and junior
 // certificates are each their own layout, driven by their own page size.
 // The date's original y (106.36) sat almost on top of the template's own
-// small "Test Date" label directly above it, garbling both — moved down
-// into the clear band between that label and the signature line, and
-// centered under it (the label isn't wide enough to anchor a left edge).
+// small "Test Date" label directly above it, garbling both. The clear band
+// between that label and the top of the instructor's signature flourish
+// below it is only ~12pt tall, so along with moving it down and centering
+// it (the label isn't wide enough to anchor a left edge), the size was
+// trimmed slightly to actually fit that gap without touching either.
 const STANDARD_PLACEMENT = {
   namePlacement: { x: 246.61, y: 372.65, size: 24, font: 'TimesRomanBold', color: [0, 0, 0] },
-  datePlacement: { x: 571, y: 88, size: 14, font: 'HelveticaBold', color: [0, 0, 0], centered: true },
+  datePlacement: { x: 571, y: 104, size: 11, font: 'HelveticaBold', color: [0, 0, 0], centered: true },
 } satisfies Pick<CertificateTemplate, 'namePlacement' | 'datePlacement'>
 
 const BROWN_REGULAR_PLACEMENT = {
