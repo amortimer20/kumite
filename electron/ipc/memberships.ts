@@ -142,6 +142,21 @@ export async function deleteMembershipPlan(id: string) {
   }
 }
 
+// Spans every membership the student has ever had, not just the active
+// one — cancelling and later re-assigning a new plan creates a new
+// StudentMembership row, and without this a student's older payment
+// history would silently vanish from the UI even though it's still in
+// the database, attached to that now-inactive row.
+export async function getPaymentHistoryForStudent(studentId: string) {
+  const memberships = await prisma.studentMembership.findMany({
+    where: { studentId },
+    include: { plan: { select: { title: true } }, payments: true },
+  })
+  return memberships
+    .flatMap((m) => m.payments.map((p) => ({ ...p, planTitle: m.plan.title })))
+    .sort((a, b) => b.paidOn.getTime() - a.paidOn.getTime())
+}
+
 export async function getMembershipForStudent(studentId: string) {
   const membership = await prisma.studentMembership.findFirst({
     where: { studentId, active: true },
@@ -265,6 +280,7 @@ export function registerMembershipHandlers() {
   ipcMain.handle('membershipPlans:delete', (_event, id: string) => deleteMembershipPlan(id))
 
   ipcMain.handle('studentMemberships:getForStudent', (_event, studentId: string) => getMembershipForStudent(studentId))
+  ipcMain.handle('studentMemberships:getPaymentHistory', (_event, studentId: string) => getPaymentHistoryForStudent(studentId))
   ipcMain.handle('studentMemberships:listActive', () => listActiveMemberships())
   ipcMain.handle(
     'studentMemberships:assign',

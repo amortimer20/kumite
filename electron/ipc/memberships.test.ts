@@ -16,6 +16,7 @@ const {
   deleteMembershipPayment,
   deleteMembershipPlan,
   getMembershipForStudent,
+  getPaymentHistoryForStudent,
   recordMembershipPayment,
 } = await import('./memberships.ts')
 
@@ -182,6 +183,38 @@ describe('cancelMembership / cancelActiveMembershipForStudent', () => {
     const otherRow = await mockPrisma.studentMembership.findUniqueOrThrow({ where: { id: otherMembership.id } })
     expect(row.active).toBe(false)
     expect(otherRow.active).toBe(true)
+  })
+})
+
+describe('getPaymentHistoryForStudent', () => {
+  it('spans a cancelled membership and its replacement, newest payment first', async () => {
+    const student = await makeStudent()
+    const oldPlan = await makePlan()
+    const newPlan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Legacy Unlimited', priceCents: 7000, includedPrivateLessons: 0 },
+    })
+
+    const oldMembership = await assignMembership(student.id, { planId: oldPlan.id, startDate: new Date('2024-01-01').toISOString() })
+    await recordMembershipPayment(oldMembership.id, { amountCents: 8000, paidOn: new Date('2024-01-01').toISOString() })
+    await cancelMembership(oldMembership.id)
+
+    const newMembership = await assignMembership(student.id, { planId: newPlan.id, startDate: new Date('2024-06-01').toISOString() })
+    await recordMembershipPayment(newMembership.id, { amountCents: 7000, paidOn: new Date('2024-06-01').toISOString() })
+
+    const history = await getPaymentHistoryForStudent(student.id)
+
+    expect(history).toHaveLength(2)
+    // Newest first, regardless of which membership row it belongs to.
+    expect(history[0].amountCents).toBe(7000)
+    expect(history[0].planTitle).toBe('Legacy Unlimited')
+    expect(history[1].amountCents).toBe(8000)
+    expect(history[1].planTitle).toBe('Unlimited Group')
+  })
+
+  it('returns an empty array for a student with no memberships at all', async () => {
+    const student = await makeStudent()
+    const history = await getPaymentHistoryForStudent(student.id)
+    expect(history).toEqual([])
   })
 })
 

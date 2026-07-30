@@ -225,6 +225,13 @@ export interface MembershipPaymentInput {
   notes?: string | null
 }
 
+// A payment plus which plan it was paid against — spans every membership a
+// student has ever had (not just their currently active one), so switching
+// or cancelling plans never makes older payments disappear from view.
+export interface MembershipPaymentWithPlan extends MembershipPayment {
+  planTitle: string
+}
+
 // A manual credit/correction applied on top of the live-computed "private
 // lessons used this period" count, never a raw overwrite. delta is signed
 // from the student's perspective: +1 is a bonus lesson (reduces used,
@@ -374,5 +381,8 @@ export interface Api {
     // entered with a mistake is just removed and re-recorded correctly.
     deletePayment(paymentId: string): Promise<StudentMembership>
     addUsageAdjustment(id: string, input: MembershipUsageAdjustmentInput): Promise<StudentMembership>
+    // Every payment across every membership this student has ever had
+    // (active or long since cancelled), newest first.
+    getPaymentHistory(studentId: string): Promise<MembershipPaymentWithPlan[]>
   }
 }

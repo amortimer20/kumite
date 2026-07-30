@@ -74,6 +74,7 @@ const api: Api = {
     deletePayment: (paymentId: string) => ipcRenderer.invoke('studentMemberships:deletePayment', paymentId),
     addUsageAdjustment: (id: string, input: MembershipUsageAdjustmentInput) =>
       ipcRenderer.invoke('studentMemberships:addUsageAdjustment', id, input),
+    getPaymentHistory: (studentId: string) => ipcRenderer.invoke('studentMemberships:getPaymentHistory', studentId),
   },
 }
 

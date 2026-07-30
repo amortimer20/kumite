@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import type { MembershipPayment, MembershipPlan, Student, StudentMembership } from '../../shared/types'
+import type { MembershipPayment, MembershipPaymentWithPlan, MembershipPlan, Student, StudentMembership } from '../../shared/types'
 import {
   FREQUENCY_LABEL,
   MEMBERSHIP_STATUS_COLOR,
@@ -51,6 +51,7 @@ export function StudentMembershipDialog({
 }) {
   const [membership, setMembership] = useState<StudentMembership | null>(null)
   const [plans, setPlans] = useState<MembershipPlan[]>([])
+  const [paymentHistory, setPaymentHistory] = useState<MembershipPaymentWithPlan[]>([])
   const [loading, setLoading] = useState(true)
 
   const [assignForm, setAssignForm] = useState(EMPTY_ASSIGN_FORM)
@@ -70,7 +71,11 @@ export function StudentMembershipDialog({
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null)
 
   async function refresh(studentId: string) {
-    const m = await api.studentMemberships.getForStudent(studentId)
+    const [m, history] = await Promise.all([
+      api.studentMemberships.getForStudent(studentId),
+      api.studentMemberships.getPaymentHistory(studentId),
+    ])
+    setPaymentHistory(history)
     setMembership(m)
     if (m) {
       setChangePlanForm({
@@ -230,201 +235,215 @@ export function StudentMembershipDialog({
 
         {loading ? (
           <p className="text-sm italic text-muted-foreground">Loading…</p>
-        ) : !membership ? (
-          <form className="flex flex-col gap-3" onSubmit={handleAssign}>
-            <p className="text-sm text-muted-foreground">This student doesn&rsquo;t have a membership yet.</p>
-            <div>
-              <Label className="mb-1">Plan</Label>
-              <Select value={assignForm.planId} onValueChange={(v) => setAssignForm((f) => ({ ...f, planId: v }))}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder={plans.length === 0 ? 'No plans yet — add one in Settings' : 'Choose a plan'} />
-                </SelectTrigger>
-                <SelectContent>
-                  {plans.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.title} ({formatCents(p.priceCents)}/{FREQUENCY_LABEL[p.billingFrequency].toLowerCase()})</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <Label className="mb-1">Price override (optional)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Leave blank to use the plan's price"
-                  value={assignForm.priceOverride}
-                  onChange={(e) => setAssignForm((f) => ({ ...f, priceOverride: e.target.value }))}
-                />
-              </div>
-              <div className="w-40">
-                <Label className="mb-1">Start date</Label>
-                <Input
-                  type="date"
-                  value={assignForm.startDate}
-                  onChange={(e) => setAssignForm((f) => ({ ...f, startDate: e.target.value }))}
-                />
-              </div>
-            </div>
-            {assignError && <p className="text-sm text-destructive">{assignError}</p>}
-            <DialogFooter>
-              <Button type="submit" disabled={plans.length === 0 || assigning}>Assign Membership</Button>
-            </DialogFooter>
-          </form>
         ) : (
           <div className="flex flex-col gap-5">
-            <div className="rounded-lg border border-border bg-card p-3">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{membership.plan.title}</span>
-                <div className="text-right">
-                  <span className={`text-sm font-medium ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{MEMBERSHIP_STATUS_LABEL[membership.status]}</span>
-                  {membership.amountOwedCents > 0 && (
-                    <p className={`text-xs ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{formatCents(membership.amountOwedCents)} owed</p>
-                  )}
+            {!membership ? (
+              <form className="flex flex-col gap-3" onSubmit={handleAssign}>
+                <p className="text-sm text-muted-foreground">This student doesn&rsquo;t have a membership yet.</p>
+                <div>
+                  <Label className="mb-1">Plan</Label>
+                  <Select value={assignForm.planId} onValueChange={(v) => setAssignForm((f) => ({ ...f, planId: v }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={plans.length === 0 ? 'No plans yet — add one in Settings' : 'Choose a plan'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {plans.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>{p.title} ({formatCents(p.priceCents)}/{FREQUENCY_LABEL[p.billingFrequency].toLowerCase()})</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <Label className="mb-1">Price override (optional)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Leave blank to use the plan's price"
+                      value={assignForm.priceOverride}
+                      onChange={(e) => setAssignForm((f) => ({ ...f, priceOverride: e.target.value }))}
+                    />
+                  </div>
+                  <div className="w-40">
+                    <Label className="mb-1">Start date</Label>
+                    <Input
+                      type="date"
+                      value={assignForm.startDate}
+                      onChange={(e) => setAssignForm((f) => ({ ...f, startDate: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                {assignError && <p className="text-sm text-destructive">{assignError}</p>}
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={plans.length === 0 || assigning}>Assign Membership</Button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="rounded-lg border border-border bg-card p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{membership.plan.title}</span>
+                    <div className="text-right">
+                      <span className={`text-sm font-medium ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{MEMBERSHIP_STATUS_LABEL[membership.status]}</span>
+                      {membership.amountOwedCents > 0 && (
+                        <p className={`text-xs ${MEMBERSHIP_STATUS_COLOR[membership.status]}`}>{formatCents(membership.amountOwedCents)} owed</p>
+                      )}
+                    </div>
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {formatCents(membership.effectivePriceCents)} / {FREQUENCY_LABEL[membership.plan.billingFrequency].toLowerCase()}
+                    {membership.priceOverrideCents != null && ' (custom price)'}
+                    {' — next due '}
+                    {new Date(membership.nextDueDate).toLocaleDateString()}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Private lessons this period: {Math.max(0, membership.privateLessonsUsed)} used
+                    {(membership.plan.includedPrivateLessons > 0 || membership.privateLessonsUsed > 0) && (
+                      <> of {membership.plan.includedPrivateLessons} ({membership.privateLessonsRemaining < 0
+                        ? `${-membership.privateLessonsRemaining} over`
+                        : `${membership.privateLessonsRemaining} remaining`})</>
+                    )}
+                  </p>
+                </div>
+
+                <form className="flex items-end gap-2 border-t border-border pt-3" onSubmit={handleChangePlan}>
+                  <div className="flex-1">
+                    <Label className="mb-1">Change plan</Label>
+                    <Select
+                      key={changePlanKey}
+                      value={changePlanForm.planId}
+                      onValueChange={(v) => setChangePlanForm((f) => ({ ...f, planId: v }))}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {changePlanOptions.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>{p.title}{!p.active ? ' (archived)' : ''}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="w-40">
+                    <Label className="mb-1">Price override</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Plan price"
+                      value={changePlanForm.priceOverride}
+                      onChange={(e) => setChangePlanForm((f) => ({ ...f, priceOverride: e.target.value }))}
+                    />
+                  </div>
+                  <Button type="submit" variant="outline">Save</Button>
+                </form>
+
+                <form className="flex flex-col gap-2 border-t border-border pt-3" onSubmit={handleRecordPayment}>
+                  <Label>Record a payment</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      className="w-28"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Amount"
+                      value={paymentForm.amount}
+                      onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
+                    />
+                    <Input
+                      className="w-40"
+                      type="date"
+                      title="Paid on"
+                      value={paymentForm.paidOn}
+                      onChange={(e) => setPaymentForm((f) => ({ ...f, paidOn: e.target.value }))}
+                    />
+                    <Input
+                      className="w-36"
+                      placeholder="Method (optional)"
+                      value={paymentForm.method}
+                      onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
+                    />
+                    <Input
+                      className="w-48"
+                      placeholder="Notes (optional)"
+                      value={paymentForm.notes}
+                      onChange={(e) => setPaymentForm((f) => ({ ...f, notes: e.target.value }))}
+                    />
+                    <Button type="submit">Record Payment</Button>
+                  </div>
+                  {paymentError && <p className="text-sm text-destructive">{paymentError}</p>}
+                </form>
+              </>
+            )}
+
+            <div className="border-t border-border pt-3">
+              <Label className="mb-2">Payment history</Label>
+              <div className="max-h-64 overflow-y-auto rounded-md border border-border">
+                <Table className="table-fixed">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-24">Paid</TableHead>
+                      <TableHead className="w-20">Amount</TableHead>
+                      <TableHead className="w-32">Plan</TableHead>
+                      <TableHead className="w-28">Method</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead className="w-28" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentHistory.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center italic text-muted-foreground">No payments recorded yet.</TableCell>
+                      </TableRow>
+                    ) : (
+                      paymentHistory.map((payment) => (
+                        <TableRow key={payment.id}>
+                          <TableCell>{new Date(payment.paidOn).toLocaleDateString()}</TableCell>
+                          <TableCell>{formatCents(payment.amountCents)}</TableCell>
+                          <TableCell className="truncate">{payment.planTitle}</TableCell>
+                          <TableCell className="truncate">{payment.method ?? '—'}</TableCell>
+                          <TableCell className="truncate">{payment.notes ?? '—'}</TableCell>
+                          <TableCell>
+                            <Button variant="destructive" size="sm" onClick={() => handleDeletePayment(payment)}><Trash2 />Delete</Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {formatCents(membership.effectivePriceCents)} / {FREQUENCY_LABEL[membership.plan.billingFrequency].toLowerCase()}
-                {membership.priceOverrideCents != null && ' (custom price)'}
-                {' — next due '}
-                {new Date(membership.nextDueDate).toLocaleDateString()}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Private lessons this period: {Math.max(0, membership.privateLessonsUsed)} used
-                {(membership.plan.includedPrivateLessons > 0 || membership.privateLessonsUsed > 0) && (
-                  <> of {membership.plan.includedPrivateLessons} ({membership.privateLessonsRemaining < 0
-                    ? `${-membership.privateLessonsRemaining} over`
-                    : `${membership.privateLessonsRemaining} remaining`})</>
-                )}
-              </p>
             </div>
 
-            <form className="flex items-end gap-2 border-t border-border pt-3" onSubmit={handleChangePlan}>
-              <div className="flex-1">
-                <Label className="mb-1">Change plan</Label>
-                <Select
-                  key={changePlanKey}
-                  value={changePlanForm.planId}
-                  onValueChange={(v) => setChangePlanForm((f) => ({ ...f, planId: v }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {changePlanOptions.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.title}{!p.active ? ' (archived)' : ''}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-40">
-                <Label className="mb-1">Price override</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Plan price"
-                  value={changePlanForm.priceOverride}
-                  onChange={(e) => setChangePlanForm((f) => ({ ...f, priceOverride: e.target.value }))}
-                />
-              </div>
-              <Button type="submit" variant="outline">Save</Button>
-            </form>
-
-            <form className="flex flex-col gap-2 border-t border-border pt-3" onSubmit={handleRecordPayment}>
-              <Label>Record a payment</Label>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  className="w-28"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Amount"
-                  value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, amount: e.target.value }))}
-                />
-                <Input
-                  className="w-40"
-                  type="date"
-                  title="Paid on"
-                  value={paymentForm.paidOn}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, paidOn: e.target.value }))}
-                />
-                <Input
-                  className="w-36"
-                  placeholder="Method (optional)"
-                  value={paymentForm.method}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
-                />
-                <Input
-                  className="w-48"
-                  placeholder="Notes (optional)"
-                  value={paymentForm.notes}
-                  onChange={(e) => setPaymentForm((f) => ({ ...f, notes: e.target.value }))}
-                />
-                <Button type="submit">Record Payment</Button>
-              </div>
-              {paymentError && <p className="text-sm text-destructive">{paymentError}</p>}
-            </form>
-
-            <Table className="table-fixed">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-24">Paid</TableHead>
-                  <TableHead className="w-20">Amount</TableHead>
-                  <TableHead className="w-28">Method</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead className="w-28" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {membership.payments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center italic text-muted-foreground">No payments recorded yet.</TableCell>
-                  </TableRow>
-                ) : (
-                  membership.payments
-                    .slice()
-                    .reverse()
-                    .map((payment) => (
-                      <TableRow key={payment.id}>
-                        <TableCell>{new Date(payment.paidOn).toLocaleDateString()}</TableCell>
-                        <TableCell>{formatCents(payment.amountCents)}</TableCell>
-                        <TableCell className="truncate">{payment.method ?? '—'}</TableCell>
-                        <TableCell className="truncate">{payment.notes ?? '—'}</TableCell>
-                        <TableCell>
-                          <Button variant="destructive" size="sm" onClick={() => handleDeletePayment(payment)}><Trash2 />Delete</Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                )}
-              </TableBody>
-            </Table>
-
-            <form className="flex items-end gap-2 border-t border-border pt-3" onSubmit={handleAddAdjustment}>
-              <div className="w-24">
-                <Label className="mb-1">+/- lessons</Label>
-                <Input
-                  type="number"
-                  value={adjustmentForm.delta}
-                  onChange={(e) => setAdjustmentForm((f) => ({ ...f, delta: e.target.value }))}
-                />
-              </div>
-              <div className="flex-1">
-                <Label className="mb-1">Reason (optional)</Label>
-                <Input
-                  placeholder="e.g. bonus lesson, our scheduling error"
-                  value={adjustmentForm.reason}
-                  onChange={(e) => setAdjustmentForm((f) => ({ ...f, reason: e.target.value }))}
-                />
-              </div>
-              <Button type="submit" variant="outline">Add</Button>
-            </form>
-            {adjustmentError && <p className="text-sm text-destructive">{adjustmentError}</p>}
+            {membership && (
+              <>
+                <form className="flex items-end gap-2 border-t border-border pt-3" onSubmit={handleAddAdjustment}>
+                  <div className="w-24">
+                    <Label className="mb-1">+/- lessons</Label>
+                    <Input
+                      type="number"
+                      value={adjustmentForm.delta}
+                      onChange={(e) => setAdjustmentForm((f) => ({ ...f, delta: e.target.value }))}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label className="mb-1">Reason (optional)</Label>
+                    <Input
+                      placeholder="e.g. bonus lesson, our scheduling error"
+                      value={adjustmentForm.reason}
+                      onChange={(e) => setAdjustmentForm((f) => ({ ...f, reason: e.target.value }))}
+                    />
+                  </div>
+                  <Button type="submit" variant="outline">Add</Button>
+                </form>
+                {adjustmentError && <p className="text-sm text-destructive">{adjustmentError}</p>}
+              </>
+            )}
 
             <DialogFooter className="border-t border-border pt-3">
-              <Button type="button" variant="destructive" onClick={handleCancelMembership}>Cancel Membership</Button>
+              {membership && (
+                <Button type="button" variant="destructive" onClick={handleCancelMembership}>Cancel Membership</Button>
+              )}
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
             </DialogFooter>
           </div>

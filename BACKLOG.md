@@ -21,6 +21,24 @@ Publisher" SmartScreen warning — not a blocker, just rougher first impression)
 
 ## Done
 
+### Student Member Since field
+Students can now have a "Member since" date (optional, backfilled manually — no default), shown
+next to Rank in both the Edit dialog and the read-only Details view. Seed data now sets a plausible
+value for every seeded student, roughly gradated by rank so the Details view doesn't just read as
+"everyone joined today."
+
+### Membership payment history: scroll container + cross-membership visibility
+The per-student membership dialog's payment history table is now capped at a fixed height
+(`max-h-64`) with its own scrollbar, so years of payments no longer grow the modal indefinitely.
+While addressing that, found and fixed a real gap: payments are tied to whichever `StudentMembership`
+row they were recorded against, and cancelling a membership only soft-ends that row (`active: false`)
+rather than deleting it — but the dialog previously only ever fetched the *current* active membership,
+so a student's older payment history silently disappeared from view the moment they were cancelled
+and re-enrolled (the data was still in the database, just no longer reachable in the UI). Added a
+`studentMemberships:getPaymentHistory` endpoint that spans every membership a student has ever had,
+each payment tagged with which plan it belongs to (new "Plan" column), and the payment history
+section now renders regardless of whether the student currently has an active membership at all.
+
 ### Dashboard summary stat tiles
 Added three at-a-glance tiles above the existing Dashboard cards: active student count, lessons
 scheduled today, and total collected this calendar month (summed from active memberships'
