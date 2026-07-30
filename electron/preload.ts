@@ -3,6 +3,7 @@ import type {
   Api,
   BusinessHoursInput,
   CertificateInput,
+  CertificateType,
   FamilyMemberInput,
   InstructorInput,
   LessonInput,
@@ -53,7 +54,7 @@ const api: Api = {
     delete: (id: string) => ipcRenderer.invoke('familyMembers:delete', id),
   },
   certificates: {
-    listAvailableRanks: () => ipcRenderer.invoke('certificates:listAvailableRanks'),
+    listAvailableRanks: (type: CertificateType) => ipcRenderer.invoke('certificates:listAvailableRanks', type),
     print: (input: CertificateInput) => ipcRenderer.invoke('certificates:print', input),
   },
   membershipPlans: {

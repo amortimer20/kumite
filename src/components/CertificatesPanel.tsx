@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import type { Student } from '../../shared/types'
+import type { CertificateType, Student } from '../../shared/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,6 +46,7 @@ export function CertificatesPanel() {
 
   const [studentId, setStudentId] = useState('')
   const [personId, setPersonId] = useState('self')
+  const [certificateType, setCertificateType] = useState<CertificateType>('regular')
   const [rank, setRank] = useState<string | undefined>(undefined)
   const [date, setDate] = useState(todayIsoDate())
 
@@ -57,8 +58,10 @@ export function CertificatesPanel() {
   useEffect(() => {
     Promise.all([
       api.students.list().then((all) => setStudents(all.filter((s) => s.active))),
-      api.certificates.listAvailableRanks().then(setAvailableRanks),
+      api.certificates.listAvailableRanks(certificateType).then(setAvailableRanks),
     ]).finally(() => setLoading(false))
+    // Only the initial load — handleTypeChange refetches when the type changes later.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const selectedStudent = students.find((s) => s.id === studentId)
@@ -80,6 +83,14 @@ export function CertificatesPanel() {
     setRank(defaultRank && availableRanks.includes(defaultRank) ? defaultRank : undefined)
   }
 
+  async function handleTypeChange(type: CertificateType) {
+    setCertificateType(type)
+    const ranks = await api.certificates.listAvailableRanks(type)
+    setAvailableRanks(ranks)
+    const defaultRank = selectedPerson?.rank
+    setRank(defaultRank && ranks.includes(defaultRank) ? defaultRank : undefined)
+  }
+
   async function handlePrint(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -89,7 +100,7 @@ export function CertificatesPanel() {
     }
     setPrinting(true)
     try {
-      await api.certificates.print({ name: selectedPerson.label, rank, date })
+      await api.certificates.print({ name: selectedPerson.label, rank, type: certificateType, date })
       toast.success('Opened in your PDF viewer — print from there.')
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -152,8 +163,21 @@ export function CertificatesPanel() {
           )}
 
           <div>
+            <Label className="mb-1">Certificate Type</Label>
+            <Select value={certificateType} onValueChange={(v) => handleTypeChange(v as CertificateType)}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="regular">Regular</SelectItem>
+                <SelectItem value="junior">Junior</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
             <Label className="mb-1">Rank</Label>
-            <Select key={`${studentId}-${personId}`} value={rank} onValueChange={setRank} disabled={!selectedPerson}>
+            <Select key={`${studentId}-${personId}-${certificateType}`} value={rank} onValueChange={setRank} disabled={!selectedPerson}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Select a rank" />
               </SelectTrigger>

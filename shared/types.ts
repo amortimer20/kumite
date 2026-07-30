@@ -159,9 +159,15 @@ export interface BusinessHoursInput {
   closeTime?: string
 }
 
+// "junior" certificates are a distinct template per rank (same wording,
+// different art/sizing for younger students) — not every rank has both;
+// see RANK_TEMPLATES in electron/certificates/ranks.ts.
+export type CertificateType = 'regular' | 'junior'
+
 export interface CertificateInput {
   name: string
   rank: string
+  type: CertificateType
   // ISO yyyy-mm-dd
   date: string
 }
@@ -341,8 +347,9 @@ export interface Api {
     delete(id: string): Promise<void>
   }
   certificates: {
-    // Ranks with no template available (e.g. White) are simply absent.
-    listAvailableRanks(): Promise<string[]>
+    // Ranks with no template for the given type (e.g. White, or Black ranks
+    // when type is "junior") are simply absent.
+    listAvailableRanks(type: CertificateType): Promise<string[]>
     // Opens the generated certificate in the OS's default PDF viewer —
     // printing from there is a normal action in that app, not something
     // triggered directly by Kumite.

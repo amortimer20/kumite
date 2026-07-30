@@ -2,12 +2,14 @@
 
 Feature ideas discussed but not yet implemented, roughly in the order we'd want to tackle them.
 
-## Replace placeholder certificate templates
-The 9 rank certificate PDFs in `electron/certificates/templates/` (`yellow.pdf` through `black.pdf`,
-no `white.pdf` by design) are auto-generated placeholders from `scripts/generate-placeholder-certificates.ts`,
-not the studio's real certificate design. Swap in the official templates once they exist — same
-filenames/rank mapping (`electron/certificates/ranks.ts`) should drop in without other code changes,
-though text placement may need re-checking with `scripts/certificate-calibrate.ts`.
+## Black belt certificate templates (1st-10th degree) still placeholders
+Yellow through Brown 1st now have the studio's real certificate designs (see Done below), but no
+Black-belt templates exist yet — `scripts/generate-placeholder-certificates.ts` still generates
+those 10. Swap them in via `electron/certificates/ranks.ts`'s `RANK_TEMPLATES` map once real designs
+exist, following the same pattern as the other ranks (drop the file in, add `namePlacement`/
+`datePlacement` coordinates, remove `isPlaceholder`). Note the studio's convention is no "junior"
+Black-belt certificate at all — juniors aren't graded to black belt — so these only ever need a
+`regular` entry.
 
 ## Verify the Windows installer end-to-end
 No in-app/over-the-air auto-updates — updates will just be a newer installer the studio re-runs
@@ -20,6 +22,28 @@ whether code-signing is worth it later (unsigned installs currently show a Windo
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
 ## Done
+
+### Real certificate templates (Yellow-Brown 1st) + Certificate Type (Regular/Junior)
+Replaced the placeholder PDFs for Yellow, Orange, Purple, Blue, Green, and Brown 3rd/2nd/1st with
+the studio's actual certificate designs, and added matching "Junior" variants for all of those ranks
+— a distinction the studio's old system had that Kumite didn't yet know about. The source PDFs
+turned out to have the name/date as real removable vector text layered over the artwork (not
+flattened into the image, despite looking that way), so the old "Michael Walsh, 7/29" test data
+could be stripped cleanly rather than needing brand-new blank templates. `electron/certificates/ranks.ts`
+now maps each rank to per-type templates, each carrying its own text placement/size/color (three
+layout families in total, calibrated directly from the original PDFs' own coordinates) — replacing
+the single shared `NAME_POSITION`/`DATE_POSITION` that assumed one layout fit everything.
+`scripts/generate-placeholder-certificates.ts` was narrowed to only ever (re)write templates
+explicitly flagged `isPlaceholder`, so it can't accidentally clobber a real design. Added a
+"Certificate Type" field to the Certificates page (defaults to Regular) that filters the Rank
+dropdown to whichever ranks actually have a template for that type — Black-belt ranks correctly
+disappear when Junior is selected, since no junior black-belt templates exist (by design — see
+Backlog). Also fixed a real cosmetic bug carried over from the studio's original design: on the
+Yellow/Orange/Purple/Blue/Green templates, the printed date sat right on top of the template's own
+small "Test Date" label. Moved it down into the clear band between that label and the signature
+line, and made date placement support horizontal centering (`TextPlacement.centered`) so it stays
+balanced regardless of how wide the formatted date string is (e.g. "May 1, 2026" vs. "September 21,
+2026") rather than needing a fixed left edge.
 
 ### Student Member Since field
 Students can now have a "Member since" date (optional, backfilled manually — no default), shown

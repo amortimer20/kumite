@@ -3,9 +3,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
-import { RANK_TEMPLATE_FILES, NAME_POSITION, DATE_POSITION, isCertificateRank } from '../certificates/ranks.ts'
-import type { CertificateInput } from '../../shared/types.ts'
+import { PDFDocument, StandardFonts, rgb, type PDFFont } from 'pdf-lib'
+import { getCertificateTemplate, RANK_TEMPLATES, type TextPlacement } from '../certificates/ranks.ts'
+import type { CertificateInput, CertificateType } from '../../shared/types.ts'
 
 const templatesDir = app.isPackaged
   ? path.join(process.resourcesPath, 'certificates')
@@ -16,37 +16,62 @@ function formatDate(isoDate: string) {
   return new Date(year, month - 1, day).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-// Only ranks with both a mapping entry AND an actual file on disk are
-// offered, so a missing/not-yet-provided template quietly disappears from
-// the picker instead of producing a broken option.
-export function listAvailableCertificateRanks(): string[] {
-  return (Object.entries(RANK_TEMPLATE_FILES) as [string, string][])
-    .filter(([, filename]) => fs.existsSync(path.join(templatesDir, filename)))
-    .map(([rank]) => rank)
+// Only ranks with both a mapping entry for this type AND an actual file on
+// disk are offered, so a missing/not-yet-provided template quietly
+// disappears from the picker instead of producing a broken option.
+export function listAvailableCertificateRanks(type: CertificateType): string[] {
+  return Object.keys(RANK_TEMPLATES).filter((rank) => {
+    const template = getCertificateTemplate(rank, type)
+    return template && fs.existsSync(path.join(templatesDir, template.filename))
+  })
+}
+
+// `x` is a left edge, unless `centered` is set — then it's the horizontal
+// center to balance the text under (needed where the string's width varies,
+// e.g. a date's length depends on the month name).
+function resolveX(placement: TextPlacement, text: string, font: PDFFont) {
+  if (!placement.centered) return placement.x
+  return placement.x - font.widthOfTextAtSize(text, placement.size) / 2
 }
 
 export async function generateCertificateBytes(input: CertificateInput) {
-  if (!isCertificateRank(input.rank)) {
-    throw new Error(`No certificate template available for rank "${input.rank}".`)
-  }
-  const templatePath = path.join(templatesDir, RANK_TEMPLATE_FILES[input.rank]!)
-  if (!fs.existsSync(templatePath)) {
-    throw new Error(`No certificate template available for rank "${input.rank}".`)
+  const template = getCertificateTemplate(input.rank, input.type)
+  const templatePath = template && path.join(templatesDir, template.filename)
+  if (!template || !templatePath || !fs.existsSync(templatePath)) {
+    throw new Error(`No ${input.type} certificate template available for rank "${input.rank}".`)
   }
 
   const pdfDoc = await PDFDocument.load(fs.readFileSync(templatePath))
   const page = pdfDoc.getPages()[0]
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
-  const color = rgb(0.1, 0.1, 0.1)
+  const fonts = {
+    TimesRomanBold: await pdfDoc.embedFont(StandardFonts.TimesRomanBold),
+    HelveticaBold: await pdfDoc.embedFont(StandardFonts.HelveticaBold),
+  }
 
-  page.drawText(input.name, { x: NAME_POSITION.x, y: NAME_POSITION.y, size: 20, font, color })
-  page.drawText(formatDate(input.date), { x: DATE_POSITION.x, y: DATE_POSITION.y, size: 14, font, color })
+  const { namePlacement, datePlacement } = template
+  const nameFont = fonts[namePlacement.font]
+  page.drawText(input.name, {
+    x: resolveX(namePlacement, input.name, nameFont),
+    y: namePlacement.y,
+    size: namePlacement.size,
+    font: nameFont,
+    color: rgb(...namePlacement.color),
+  })
+  const formattedDate = formatDate(input.date)
+  const dateFont = fonts[datePlacement.font]
+  page.drawText(formattedDate, {
+    x: resolveX(datePlacement, formattedDate, dateFont),
+    y: datePlacement.y,
+    size: datePlacement.size,
+    font: dateFont,
+    color: rgb(...datePlacement.color),
+  })
 
   return pdfDoc.save()
 }
 
 export function registerCertificateHandlers() {
-  ipcMain.handle('certificates:listAvailableRanks', () => listAvailableCertificateRanks())
+  ipcMain.handle('certificates:listAvailableRanks', (_event, type: CertificateType) => listAvailableCertificateRanks(type))
 
   ipcMain.handle('certificates:print', async (_event, input: CertificateInput) => {
     const bytes = await generateCertificateBytes(input)
