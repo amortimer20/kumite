@@ -15,6 +15,16 @@ function serializeStudent<T extends { _count: { lessons: number } }>(student: T)
   return { ...rest, lessonCount: _count.lessons }
 }
 
+// memberSince arrives as an ISO string (or null/undefined) from the renderer;
+// Prisma's DateTime column needs an actual Date, and `undefined` must stay
+// undefined (untouched) rather than becoming an unintended null on update.
+function toStudentData<T extends Partial<StudentInput>>(input: T) {
+  return {
+    ...input,
+    memberSince: input.memberSince === undefined ? undefined : input.memberSince ? new Date(input.memberSince) : null,
+  }
+}
+
 export function registerStudentHandlers() {
   ipcMain.handle('students:list', async () => {
     const students = await prisma.student.findMany({
@@ -25,12 +35,12 @@ export function registerStudentHandlers() {
   })
 
   ipcMain.handle('students:create', async (_event, input: StudentInput) => {
-    const student = await prisma.student.create({ data: input, include: studentInclude })
+    const student = await prisma.student.create({ data: toStudentData(input), include: studentInclude })
     return serializeStudent(student)
   })
 
   ipcMain.handle('students:update', async (_event, id: string, input: Partial<StudentInput>) => {
-    const student = await prisma.student.update({ where: { id }, data: input, include: studentInclude })
+    const student = await prisma.student.update({ where: { id }, data: toStudentData(input), include: studentInclude })
     return serializeStudent(student)
   })
 

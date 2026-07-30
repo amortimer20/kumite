@@ -22,6 +22,10 @@ model Student {
   email           String?
   phone           String?
   rank            String?
+  // When they started training here — distinct from createdAt (when this
+  // record was entered) and from a membership plan's own billing start date.
+  // Optional and backfilled manually, so there's no default.
+  memberSince     DateTime?
   street          String?
   city            String?
   state           String?

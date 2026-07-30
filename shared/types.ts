@@ -38,6 +38,9 @@ export interface Student {
   email: string | null
   phone: string | null
   rank: string | null
+  // When they started training here — distinct from createdAt and from a
+  // membership plan's own billing start date. Optional, backfilled manually.
+  memberSince: string | null
   street: string | null
   city: string | null
   state: string | null
@@ -58,6 +61,7 @@ export interface StudentInput {
   email?: string | null
   phone?: string | null
   rank?: string | null
+  memberSince?: string | null
   street?: string | null
   city?: string | null
   state?: string | null

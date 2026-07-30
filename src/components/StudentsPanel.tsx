@@ -10,6 +10,7 @@ import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { useLessonDelete } from '@/hooks/useLessonDelete'
 import { getErrorMessage } from '@/lib/errors'
+import { dateToIso, isoDateToInstant } from '@/lib/isoDate'
 import { STATUS_LABEL } from '@/lib/lessonStatus'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -55,6 +56,7 @@ const EMPTY_FORM: StudentInput = {
   email: '',
   phone: '',
   rank: null,
+  memberSince: '',
   street: '',
   city: '',
   state: '',
@@ -69,6 +71,7 @@ function toFormValues(student: Student): StudentInput {
     email: student.email ?? '',
     phone: student.phone ?? '',
     rank: student.rank,
+    memberSince: student.memberSince ? dateToIso(new Date(student.memberSince)) : '',
     street: student.street ?? '',
     city: student.city ?? '',
     state: student.state ?? '',
@@ -91,6 +94,7 @@ function normalize(form: StudentInput): StudentInput {
     email: form.email?.trim() || null,
     phone: form.phone?.trim() || null,
     rank: form.rank || null,
+    memberSince: form.memberSince ? isoDateToInstant(form.memberSince) : null,
     street: form.street?.trim() || null,
     city: form.city?.trim() || null,
     state: form.state?.trim() || null,
@@ -440,10 +444,14 @@ export function StudentsPanel() {
             </DialogTitle>
           </DialogHeader>
           <div className="flex flex-col gap-3 text-sm">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <div>
                 <Label className="mb-1 text-muted-foreground">Rank</Label>
                 <p>{detailsStudent?.rank ?? '—'}</p>
+              </div>
+              <div>
+                <Label className="mb-1 text-muted-foreground">Member since</Label>
+                <p>{detailsStudent?.memberSince ? new Date(detailsStudent.memberSince).toLocaleDateString() : '—'}</p>
               </div>
               <div>
                 <Label className="mb-1 text-muted-foreground">Phone</Label>
@@ -517,22 +525,32 @@ export function StudentsPanel() {
               </div>
             </div>
 
-            <div>
-              <Label className="mb-1">Rank</Label>
-              <Select
-                key={editingStudent?.id}
-                value={editForm.rank ?? undefined}
-                onValueChange={(v) => setEditForm((f) => ({ ...f, rank: v }))}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Rank" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STUDENT_RANKS.map((rank) => (
-                    <SelectItem key={rank} value={rank}>{rank}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label className="mb-1">Rank</Label>
+                <Select
+                  key={editingStudent?.id}
+                  value={editForm.rank ?? undefined}
+                  onValueChange={(v) => setEditForm((f) => ({ ...f, rank: v }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Rank" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STUDENT_RANKS.map((rank) => (
+                      <SelectItem key={rank} value={rank}>{rank}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1">
+                <Label className="mb-1">Member since</Label>
+                <Input
+                  type="date"
+                  value={editForm.memberSince ?? ''}
+                  onChange={(e) => setEditForm((f) => ({ ...f, memberSince: e.target.value }))}
+                />
+              </div>
             </div>
 
             <div className="flex gap-2">

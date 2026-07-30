@@ -130,14 +130,18 @@ async function main() {
   })
 
   // --- Students ---
+  // memberSince roughly tracks rank (higher rank, longer tenure) so the
+  // Details view shows a believable spread rather than every student
+  // reading as brand new.
   const students = await Promise.all([
-    prisma.student.create({ data: { firstName: 'Maya', lastName: 'Chen', rank: 'White' } }),
-    prisma.student.create({ data: { firstName: 'Ethan', lastName: 'Brooks', rank: 'Yellow' } }),
+    prisma.student.create({ data: { firstName: 'Maya', lastName: 'Chen', rank: 'White', memberSince: daysFromNowAt(-45, 0) } }),
+    prisma.student.create({ data: { firstName: 'Ethan', lastName: 'Brooks', rank: 'Yellow', memberSince: daysFromNowAt(-140, 0) } }),
     prisma.student.create({
       data: {
         firstName: 'Sofia',
         lastName: 'Ramirez',
         rank: 'Orange',
+        memberSince: daysFromNowAt(-280, 0),
         street: '482 Birchwood Ln',
         city: 'Springfield',
         state: 'OH',
@@ -145,13 +149,13 @@ async function main() {
         notes: 'Sibling of Diego Ramirez, same pickup time.',
       },
     }),
-    prisma.student.create({ data: { firstName: 'Diego', lastName: 'Ramirez', rank: 'Green' } }),
-    prisma.student.create({ data: { firstName: 'Liam', lastName: 'Patel', rank: 'Blue' } }),
-    prisma.student.create({ data: { firstName: 'Ava', lastName: 'Thompson', rank: 'Brown 2nd' } }),
-    prisma.student.create({ data: { firstName: 'Noah', lastName: 'Kim', rank: 'Black 1st' } }),
-    prisma.student.create({ data: { firstName: 'Priya', lastName: 'Singh', rank: 'Purple' } }),
+    prisma.student.create({ data: { firstName: 'Diego', lastName: 'Ramirez', rank: 'Green', memberSince: daysFromNowAt(-800, 0) } }),
+    prisma.student.create({ data: { firstName: 'Liam', lastName: 'Patel', rank: 'Blue', memberSince: daysFromNowAt(-600, 0) } }),
+    prisma.student.create({ data: { firstName: 'Ava', lastName: 'Thompson', rank: 'Brown 2nd', memberSince: daysFromNowAt(-1300, 0) } }),
+    prisma.student.create({ data: { firstName: 'Noah', lastName: 'Kim', rank: 'Black 1st', memberSince: daysFromNowAt(-2200, 0) } }),
+    prisma.student.create({ data: { firstName: 'Priya', lastName: 'Singh', rank: 'Purple', memberSince: daysFromNowAt(-420, 0) } }),
     // Archived, to exercise the "Show archived" / reactivate path.
-    prisma.student.create({ data: { firstName: 'Former', lastName: 'Student', rank: 'White', active: false } }),
+    prisma.student.create({ data: { firstName: 'Former', lastName: 'Student', rank: 'White', active: false, memberSince: daysFromNowAt(-700, 0) } }),
   ])
   const [maya, ethan, sofia, diego, liam, ava, noah, priya] = students
 
