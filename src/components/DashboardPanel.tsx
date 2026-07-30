@@ -18,6 +18,10 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
+function formatFullDate(iso: string) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })
+}
+
 function todayBounds() {
   const iso = todayIso()
   return { start: new Date(`${iso}T00:00:00`), end: new Date(`${iso}T23:59:59.999`) }
@@ -116,6 +120,7 @@ export function DashboardPanel() {
     })
     .reduce((sum, p) => sum + p.amountCents, 0)
 
+  const todayLabel = formatFullDate(todayIso())
   const instructorGroups = groupByInstructor(lessons)
   const overdue = memberships
     .filter((m) => m.status === 'overdue')
@@ -144,7 +149,8 @@ export function DashboardPanel() {
       </div>
       <div className="flex flex-wrap gap-4">
         <div className="min-w-72 flex-1 rounded-lg border border-border bg-card p-3">
-          <h3 className="mb-2 font-medium">Today's Schedule</h3>
+          <h3 className="font-medium">Today's Schedule</h3>
+          <p className="mb-2 text-xs text-muted-foreground">{todayLabel}</p>
           {showSkeleton ? (
             <div className="space-y-2">
               <Skeleton className="h-4 w-full" />
