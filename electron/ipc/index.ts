@@ -7,6 +7,7 @@ import { registerBackupHandlers } from './backup.ts'
 import { registerFamilyMemberHandlers } from './familyMembers.ts'
 import { registerCertificateHandlers } from './certificates.ts'
 import { registerMembershipHandlers } from './memberships.ts'
+import { registerSettingsHandlers } from './settings.ts'
 
 export function registerIpcHandlers() {
   registerStudentHandlers()
@@ -18,4 +19,5 @@ export function registerIpcHandlers() {
   registerFamilyMemberHandlers()
   registerCertificateHandlers()
   registerMembershipHandlers()
+  registerSettingsHandlers()
 }

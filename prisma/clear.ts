@@ -34,6 +34,7 @@ async function main() {
   await prisma.student.deleteMany()
   await prisma.instructor.deleteMany()
   await prisma.businessHours.deleteMany()
+  await prisma.appSettings.deleteMany()
 
   console.log('Database cleared.')
 }

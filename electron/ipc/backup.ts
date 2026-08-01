@@ -8,6 +8,19 @@ function defaultBackupName() {
   return `kumite-backup-${stamp}.db`
 }
 
+// better-sqlite3's backup API produces a consistent, checkpointed snapshot
+// even while the live connection has pending WAL data, so a plain file copy
+// isn't needed (and would risk grabbing a torn read). Shared by the manual
+// "Export Backup" button and the automatic scheduler in autoBackup.ts.
+export async function backupDatabaseTo(filePath: string) {
+  const src = new Database(getDbPath(), { readonly: true, fileMustExist: true })
+  try {
+    await src.backup(filePath)
+  } finally {
+    src.close()
+  }
+}
+
 export function registerBackupHandlers() {
   ipcMain.handle('backup:create', async () => {
     const { canceled, filePath } = await dialog.showSaveDialog({
@@ -17,16 +30,17 @@ export function registerBackupHandlers() {
     })
     if (canceled || !filePath) return { canceled: true }
 
-    // better-sqlite3's backup API produces a consistent, checkpointed
-    // snapshot even while the live connection has pending WAL data, so a
-    // plain file copy isn't needed (and would risk grabbing a torn read).
-    const src = new Database(getDbPath(), { readonly: true, fileMustExist: true })
-    try {
-      await src.backup(filePath)
-    } finally {
-      src.close()
-    }
+    await backupDatabaseTo(filePath)
     return { canceled: false, path: filePath }
+  })
+
+  ipcMain.handle('backup:chooseDirectory', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      title: 'Choose Automatic Backup Folder',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    if (canceled || filePaths.length === 0) return { canceled: true }
+    return { canceled: false, path: filePaths[0] }
   })
 
   ipcMain.handle('backup:restore', async () => {

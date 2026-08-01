@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Clock, CreditCard, HardDrive, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import { MEMBERSHIP_BILLING_FREQUENCIES } from '../../shared/types'
-import type { BusinessHours, MembershipBillingFrequency, MembershipPlan } from '../../shared/types'
+import { AUTO_BACKUP_FREQUENCIES, MEMBERSHIP_BILLING_FREQUENCIES } from '../../shared/types'
+import type { AppSettings, AppSettingsInput, AutoBackupFrequency, BusinessHours, MembershipBillingFrequency, MembershipPlan } from '../../shared/types'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -41,6 +41,13 @@ const DAY_LABEL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Frid
 
 const EMPTY_PLAN_FORM = { title: '', billingFrequency: 'monthly' as MembershipBillingFrequency, price: '', includedPrivateLessons: '0' }
 
+const AUTO_BACKUP_FREQUENCY_LABEL: Record<AutoBackupFrequency, string> = {
+  hourly: 'Every hour',
+  every_6_hours: 'Every 6 hours',
+  daily: 'Daily',
+  weekly: 'Weekly',
+}
+
 const SECTIONS = ['hours', 'plans', 'backup'] as const
 type Section = (typeof SECTIONS)[number]
 
@@ -63,6 +70,10 @@ export function SettingsPanel() {
   const showSkeleton = useDelayedFlag(loading)
   const [restoring, setRestoring] = useState(false)
 
+  const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [settingsLoading, setSettingsLoading] = useState(true)
+  const [choosingDirectory, setChoosingDirectory] = useState(false)
+
   const [plans, setPlans] = useState<MembershipPlan[]>([])
   const [plansLoading, setPlansLoading] = useState(true)
   const showPlansSkeleton = useDelayedFlag(plansLoading)
@@ -78,6 +89,26 @@ export function SettingsPanel() {
   useEffect(() => {
     api.businessHours.list().then(setHours).finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    api.settings.get().then(setSettings).finally(() => setSettingsLoading(false))
+  }, [])
+
+  async function updateSettings(patch: AppSettingsInput) {
+    setSettings(await api.settings.update(patch))
+  }
+
+  async function handleChooseBackupDirectory() {
+    setChoosingDirectory(true)
+    try {
+      const result = await api.backup.chooseDirectory()
+      if (!result.canceled && result.path) {
+        await updateSettings({ autoBackupDirectory: result.path })
+      }
+    } finally {
+      setChoosingDirectory(false)
+    }
+  }
 
   async function refreshPlans() {
     setPlans(await api.membershipPlans.list())
@@ -385,6 +416,65 @@ export function SettingsPanel() {
                 </Button>
               </div>
               {restoring && <p className="mt-3 text-sm text-muted-foreground">Restoring backup, the app will restart…</p>}
+
+              <div className="mt-6 border-t border-border pt-4">
+                <h3 className="mb-1 font-medium">Automatic Backups</h3>
+                <p className="mb-3 text-sm text-muted-foreground">
+                  Periodically saves a timestamped backup to a folder of your choice while the app is
+                  running — for example a synced OneDrive or Dropbox folder.
+                </p>
+                {settingsLoading ? (
+                  <Skeleton className="h-9 w-64" />
+                ) : (
+                  settings && (
+                    <div className="flex flex-col gap-3">
+                      <label className="flex w-fit items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={settings.autoBackupEnabled}
+                          onCheckedChange={(checked) => updateSettings({ autoBackupEnabled: checked === true })}
+                        />
+                        Enable automatic backups
+                      </label>
+
+                      {settings.autoBackupEnabled && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Input readOnly className="max-w-md" value={settings.autoBackupDirectory ?? 'No folder selected'} />
+                            <Button variant="outline" onClick={handleChooseBackupDirectory} disabled={choosingDirectory}>
+                              Choose Folder…
+                            </Button>
+                          </div>
+
+                          <div className="w-48">
+                            <Label className="mb-1">Frequency</Label>
+                            <Select
+                              value={settings.autoBackupFrequency}
+                              onValueChange={(v) => updateSettings({ autoBackupFrequency: v as AutoBackupFrequency })}
+                            >
+                              <SelectTrigger className="w-full">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {AUTO_BACKUP_FREQUENCIES.map((freq) => (
+                                  <SelectItem key={freq} value={freq}>{AUTO_BACKUP_FREQUENCY_LABEL[freq]}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <p className="text-sm text-muted-foreground">
+                            {!settings.autoBackupDirectory
+                              ? 'Select a folder above to start automatic backups.'
+                              : settings.lastAutoBackupAt
+                                ? `Last automatic backup: ${new Date(settings.lastAutoBackupAt).toLocaleString()}`
+                                : 'No automatic backups yet — one will run shortly.'}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
             </>
           )}
         </div>

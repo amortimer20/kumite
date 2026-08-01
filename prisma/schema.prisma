@@ -26,6 +26,11 @@ model Student {
   // record was entered) and from a membership plan's own billing start date.
   // Optional and backfilled manually, so there's no default.
   memberSince     DateTime?
+  // Timestamp of when the Release and Indemnity Agreement checkbox was
+  // agreed to at creation time — stamped by the server, not client-supplied,
+  // so it reflects when the record actually says "yes", not something
+  // editable after the fact. Null for students added before this existed.
+  waiverAgreedAt  DateTime?
   street          String?
   city            String?
   state           String?
@@ -106,6 +111,24 @@ model BusinessHours {
   isClosed  Boolean @default(false)
   openTime  String  @default("09:00")
   closeTime String  @default("20:00")
+}
+
+// Singleton row (always id 1) for app-level preferences that don't belong to
+// any one domain model — seeded lazily on first read, same pattern as
+// BusinessHours above.
+model AppSettings {
+  id                    Int       @id @default(1)
+  autoBackupEnabled     Boolean   @default(false)
+  // Absolute filesystem path chosen via a native directory picker. Backups
+  // don't actually run until this is set, even if enabled is true.
+  autoBackupDirectory   String?
+  // "hourly" | "every_6_hours" | "daily" | "weekly" — see
+  // AUTO_BACKUP_FREQUENCIES in shared/types.ts.
+  autoBackupFrequency   String    @default("daily")
+  // Timestamp of the last automatic backup that actually completed —
+  // surfaced in Settings so the user has proof it's running, not just the
+  // checkbox's word for it.
+  lastAutoBackupAt      DateTime?
 }
 
 // SQLite has no native enum support in Prisma, so status is a plain string.

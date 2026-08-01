@@ -2,6 +2,13 @@
 
 Feature ideas discussed but not yet implemented, roughly in the order we'd want to tackle them.
 
+## No retention policy on automatic backups
+The new automatic-backup feature (see Done below) never deletes old backups — at the hourly setting
+especially, these will accumulate indefinitely and could fill a drive over months of use. Not built
+now since it wasn't asked for, but worth a "keep last N" or "delete older than X days" cleanup pass
+in `electron/autoBackup.ts`'s `runAutoBackupNow` before this ships to a studio actually running it
+hourly for a long time.
+
 ## Black belt certificate templates (1st-10th degree) still placeholders
 Yellow through Brown 1st now have the studio's real certificate designs (see Done below), but no
 Black-belt templates exist yet — `scripts/generate-placeholder-certificates.ts` still generates
@@ -22,6 +29,32 @@ whether code-signing is worth it later (unsigned installs currently show a Windo
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
 ## Done
+
+### Automatic backups
+Settings > Backup & Restore now has an "Enable automatic backups" checkbox that reveals a native
+folder picker and a Frequency select (Every hour / Every 6 hours / Daily / Weekly — defaulted to
+Daily; a dropdown seemed worth the trivial extra cost over hardcoding one interval). Once a folder
+is chosen, an in-process timer (`electron/autoBackup.ts`) writes a timestamped, sortable snapshot
+(`kumite-auto-backup-<ISO timestamp>.db`, colons swapped for dashes so the filename is valid on
+Windows too) via the same better-sqlite3 backup API the manual "Export Backup" button already used
+— extracted into a shared `backupDatabaseTo` helper rather than duplicated. Runs one backup
+immediately on enabling (or on every app launch if already enabled) rather than waiting a full
+interval for the first proof it's working, and the Settings page shows "Last automatic backup: …"
+so that proof is visible, not just assumed. Settings persist in a new singleton `AppSettings` table
+(same lazy-seeded-row pattern as `BusinessHours`) — added to `clear.ts`'s wipe list too. This only
+runs "while the app is running," per how it was scoped — no OS-level scheduled task when the app is
+closed, and (see above) no pruning of old backups yet.
+
+### Release and Indemnity Agreement on new students
+Adding a student is now a modal ("Add Student" button opens it) instead of the old always-visible
+inline row — this also folded in the full field set (rank, member since, address, notes) that
+previously required a follow-up Edit, so intake happens in one place. The modal ends with the
+studio's Release and Indemnity Agreement text in a scrollable box and a required checkbox
+("I have read and agree...") that blocks submission until checked, same validation style as the
+existing first/last-name check. Fixed a run-on in the studio's original wording — it was two
+sentences joined by a comma instead of a period. Agreement is persisted as `waiverAgreedAt`, a
+server-stamped timestamp (not client-supplied, and not just a boolean) set at creation time only —
+shown in the Details view as "Agreed <date>" or "Not on file" for students added before this existed.
 
 ### Real certificate templates (Yellow-Brown 1st) + Certificate Type (Regular/Junior)
 Replaced the placeholder PDFs for Yellow, Orange, Purple, Blue, Green, and Brown 3rd/2nd/1st with

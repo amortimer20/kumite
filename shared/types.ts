@@ -49,6 +49,10 @@ export interface Student {
   active: boolean
   createdAt: string
   updatedAt: string
+  // When the Release and Indemnity Agreement checkbox was agreed to at
+  // creation time — server-stamped, not client-supplied. Null for students
+  // added before this existed.
+  waiverAgreedAt: string | null
   familyMembers: FamilyMember[]
   // Total lessons ever booked for this student — used to decide whether
   // deleting them needs the archive-or-delete-everything choice.
@@ -68,6 +72,10 @@ export interface StudentInput {
   zip?: string | null
   notes?: string | null
   active?: boolean
+  // Only meaningful on create — whether the Release and Indemnity Agreement
+  // checkbox was checked. The server turns this into a stamped
+  // waiverAgreedAt timestamp rather than storing the boolean itself.
+  agreedToWaiver?: boolean
 }
 
 // Not independently schedulable — tracked alongside a primary Student record
@@ -157,6 +165,33 @@ export interface BusinessHoursInput {
   isClosed?: boolean
   openTime?: string
   closeTime?: string
+}
+
+export const AUTO_BACKUP_FREQUENCIES = ['hourly', 'every_6_hours', 'daily', 'weekly'] as const
+
+export type AutoBackupFrequency = (typeof AUTO_BACKUP_FREQUENCIES)[number]
+
+export const AUTO_BACKUP_FREQUENCY_MINUTES: Record<AutoBackupFrequency, number> = {
+  hourly: 60,
+  every_6_hours: 60 * 6,
+  daily: 60 * 24,
+  weekly: 60 * 24 * 7,
+}
+
+export interface AppSettings {
+  autoBackupEnabled: boolean
+  // Null until the user picks a folder — backups don't run until then, even
+  // if autoBackupEnabled is true.
+  autoBackupDirectory: string | null
+  autoBackupFrequency: AutoBackupFrequency
+  // Null if an automatic backup has never completed successfully.
+  lastAutoBackupAt: string | null
+}
+
+export interface AppSettingsInput {
+  autoBackupEnabled?: boolean
+  autoBackupDirectory?: string | null
+  autoBackupFrequency?: AutoBackupFrequency
 }
 
 // "junior" certificates are a distinct template per rank (same wording,
@@ -340,6 +375,13 @@ export interface Api {
     // there is no success payload beyond confirming it wasn't canceled.
     create(): Promise<{ canceled: boolean; path?: string }>
     restore(): Promise<{ canceled: boolean }>
+    // Native folder picker for choosing where automatic backups get written.
+    chooseDirectory(): Promise<{ canceled: boolean; path?: string }>
+  }
+  settings: {
+    // Seeded lazily on first read, same pattern as businessHours:list.
+    get(): Promise<AppSettings>
+    update(input: AppSettingsInput): Promise<AppSettings>
   }
   familyMembers: {
     create(studentId: string, input: FamilyMemberInput): Promise<FamilyMember>

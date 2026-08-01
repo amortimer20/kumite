@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { registerIpcHandlers } from './ipc/index.ts'
 import { extendAllActiveSeries } from './ipc/recurringSeries.ts'
+import { startAutoBackupScheduler } from './autoBackup.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -71,6 +72,11 @@ app.whenReady().then(async () => {
     await extendAllActiveSeries()
   } catch (err) {
     console.error('Failed to extend recurring lesson series:', err)
+  }
+  try {
+    await startAutoBackupScheduler()
+  } catch (err) {
+    console.error('Failed to start automatic backup scheduler:', err)
   }
   createWindow()
 })

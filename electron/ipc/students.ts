@@ -35,7 +35,14 @@ export function registerStudentHandlers() {
   })
 
   ipcMain.handle('students:create', async (_event, input: StudentInput) => {
-    const student = await prisma.student.create({ data: toStudentData(input), include: studentInclude })
+    // agreedToWaiver is transient — the server stamps its own timestamp
+    // rather than trusting a client-supplied one, so the record reflects
+    // when the request actually arrived, not something editable client-side.
+    const { agreedToWaiver, ...studentInput } = input
+    const student = await prisma.student.create({
+      data: { ...toStudentData(studentInput), waiverAgreedAt: agreedToWaiver ? new Date() : null },
+      include: studentInclude,
+    })
     return serializeStudent(student)
   })
 

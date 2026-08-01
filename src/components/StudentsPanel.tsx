@@ -10,7 +10,7 @@ import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { useLessonDelete } from '@/hooks/useLessonDelete'
 import { getErrorMessage } from '@/lib/errors'
-import { dateToIso, isoDateToInstant } from '@/lib/isoDate'
+import { dateToIso, isoDateToInstant, todayIso } from '@/lib/isoDate'
 import { STATUS_LABEL } from '@/lib/lessonStatus'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -49,6 +49,9 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 const EMPTY_FAMILY_FORM: FamilyMemberInput = { firstName: '', lastName: '', rank: null }
+
+const RELEASE_AGREEMENT_TEXT =
+  "I, the undersigned, do hereby release and indemnify and save and hold harmless TRACY'S KARATE STUDIO, or any of its employees, or affiliates schools, against any and all liability for losses, damages, cost, or any other expense by reason of personal injury, property damage or negligence on behalf of any sort, or any aspect of learning the sport or self-defense arts. I, the undersigned, accept as my personal responsibility and liability and all risk, if any, as the result of my training, instruction or competition of any sort in connection with learning the sport or self-defense arts."
 
 const EMPTY_FORM: StudentInput = {
   firstName: '',
@@ -105,7 +108,9 @@ function normalize(form: StudentInput): StudentInput {
 
 export function StudentsPanel() {
   const [students, setStudents] = useState<Student[]>([])
+  const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addForm, setAddForm] = useState<StudentInput>(EMPTY_FORM)
+  const [agreedToWaiver, setAgreedToWaiver] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Radix Select doesn't reset its displayed label when value goes back to
   // undefined, so force a remount after each successful add to clear it.
@@ -149,6 +154,14 @@ export function StudentsPanel() {
     refresh().finally(() => setLoading(false))
   }, [])
 
+  function openAddDialog() {
+    setAddForm({ ...EMPTY_FORM, memberSince: todayIso() })
+    setAddFormKey((k) => k + 1)
+    setAgreedToWaiver(false)
+    setError(null)
+    setAddDialogOpen(true)
+  }
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -156,11 +169,14 @@ export function StudentsPanel() {
       setError('First and last name are required.')
       return
     }
+    if (!agreedToWaiver) {
+      setError('You must agree to the Release and Indemnity Agreement to add a student.')
+      return
+    }
     try {
-      await api.students.create(normalize(addForm))
+      await api.students.create({ ...normalize(addForm), agreedToWaiver })
       toast.success(`${addForm.firstName.trim()} ${addForm.lastName.trim()} added.`)
-      setAddForm(EMPTY_FORM)
-      setAddFormKey((k) => k + 1)
+      setAddDialogOpen(false)
       await refresh()
     } catch (err) {
       toast.error(getErrorMessage(err))
@@ -313,48 +329,6 @@ export function StudentsPanel() {
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Students</h2>
-      <form className="mb-4 flex flex-wrap items-center gap-2" onSubmit={handleAdd}>
-        <Input
-          className="w-40"
-          placeholder="First name"
-          value={addForm.firstName}
-          onChange={(e) => setAddForm((f) => ({ ...f, firstName: e.target.value }))}
-        />
-        <Input
-          className="w-40"
-          placeholder="Last name"
-          value={addForm.lastName}
-          onChange={(e) => setAddForm((f) => ({ ...f, lastName: e.target.value }))}
-        />
-        <Select
-          key={addFormKey}
-          value={addForm.rank ?? undefined}
-          onValueChange={(v) => setAddForm((f) => ({ ...f, rank: v }))}
-        >
-          <SelectTrigger className="w-32">
-            <SelectValue placeholder="Rank" />
-          </SelectTrigger>
-          <SelectContent>
-            {STUDENT_RANKS.map((rank) => (
-              <SelectItem key={rank} value={rank}>{rank}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Input
-          className="w-48"
-          placeholder="Email"
-          value={addForm.email ?? ''}
-          onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
-        />
-        <Input
-          className="w-36"
-          placeholder="Phone"
-          value={addForm.phone ?? ''}
-          onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value }))}
-        />
-        <Button type="submit">Add Student</Button>
-      </form>
-      {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
       <div className="mb-3 flex items-center gap-4">
         <Input
           className="w-64"
@@ -366,6 +340,7 @@ export function StudentsPanel() {
           <Checkbox checked={showArchived} onCheckedChange={(checked) => setShowArchived(checked === true)} />
           Show archived
         </label>
+        <Button className="ml-auto" onClick={openAddDialog}>Add Student</Button>
       </div>
       <Table className="table-fixed">
         <TableHeader>
@@ -433,6 +408,139 @@ export function StudentsPanel() {
         </TableBody>
       </Table>
 
+      <Dialog open={addDialogOpen} onOpenChange={(open) => !open && setAddDialogOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Student</DialogTitle>
+          </DialogHeader>
+          <form className="flex flex-col gap-3" onSubmit={handleAdd}>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label className="mb-1">First name</Label>
+                <Input
+                  value={addForm.firstName}
+                  onChange={(e) => setAddForm((f) => ({ ...f, firstName: e.target.value }))}
+                />
+              </div>
+              <div className="flex-1">
+                <Label className="mb-1">Last name</Label>
+                <Input
+                  value={addForm.lastName}
+                  onChange={(e) => setAddForm((f) => ({ ...f, lastName: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label className="mb-1">Rank</Label>
+                <Select
+                  key={addFormKey}
+                  value={addForm.rank ?? undefined}
+                  onValueChange={(v) => setAddForm((f) => ({ ...f, rank: v }))}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Rank" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STUDENT_RANKS.map((rank) => (
+                      <SelectItem key={rank} value={rank}>{rank}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex-1">
+                <Label className="mb-1">Member since</Label>
+                <Input
+                  type="date"
+                  value={addForm.memberSince ?? ''}
+                  onChange={(e) => setAddForm((f) => ({ ...f, memberSince: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label className="mb-1">Email</Label>
+                <Input
+                  value={addForm.email ?? ''}
+                  onChange={(e) => setAddForm((f) => ({ ...f, email: e.target.value }))}
+                />
+              </div>
+              <div className="flex-1">
+                <Label className="mb-1">Phone</Label>
+                <Input
+                  value={addForm.phone ?? ''}
+                  onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="mb-1">Street</Label>
+              <Input
+                value={addForm.street ?? ''}
+                onChange={(e) => setAddForm((f) => ({ ...f, street: e.target.value }))}
+              />
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Label className="mb-1">City</Label>
+                <Input
+                  value={addForm.city ?? ''}
+                  onChange={(e) => setAddForm((f) => ({ ...f, city: e.target.value }))}
+                />
+              </div>
+              <div className="w-20">
+                <Label className="mb-1">State</Label>
+                <Input
+                  value={addForm.state ?? ''}
+                  onChange={(e) => setAddForm((f) => ({ ...f, state: e.target.value }))}
+                />
+              </div>
+              <div className="w-24">
+                <Label className="mb-1">Zip</Label>
+                <Input
+                  value={addForm.zip ?? ''}
+                  onChange={(e) => setAddForm((f) => ({ ...f, zip: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label className="mb-1">Notes</Label>
+              <Textarea
+                placeholder="Additional notes"
+                value={addForm.notes ?? ''}
+                onChange={(e) => setAddForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+
+            <div className="border-t border-border pt-3">
+              <Label className="mb-2">Release and Indemnity Agreement</Label>
+              <div className="max-h-32 overflow-y-auto rounded-md border border-input bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                {RELEASE_AGREEMENT_TEXT}
+              </div>
+              <label className="mt-2 flex items-start gap-2 text-sm">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={agreedToWaiver}
+                  onCheckedChange={(checked) => setAgreedToWaiver(checked === true)}
+                />
+                I have read and agree to the Release and Indemnity Agreement above.
+              </label>
+            </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+              <Button type="submit">Add Student</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={detailsStudent !== null} onOpenChange={(open) => !open && setDetailsStudent(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -479,6 +587,14 @@ export function StudentsPanel() {
             <div>
               <Label className="mb-1 text-muted-foreground">Notes</Label>
               <p className="whitespace-pre-wrap">{detailsStudent?.notes || '—'}</p>
+            </div>
+            <div>
+              <Label className="mb-1 text-muted-foreground">Release and Indemnity Agreement</Label>
+              <p>
+                {detailsStudent?.waiverAgreedAt
+                  ? `Agreed ${new Date(detailsStudent.waiverAgreedAt).toLocaleDateString()}`
+                  : 'Not on file'}
+              </p>
             </div>
             <div className="border-t border-border pt-3">
               <Label className="mb-2 text-muted-foreground">Family Members</Label>

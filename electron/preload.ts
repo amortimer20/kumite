@@ -1,6 +1,7 @@
 import { ipcRenderer, contextBridge } from 'electron'
 import type {
   Api,
+  AppSettingsInput,
   BusinessHoursInput,
   CertificateInput,
   CertificateType,
@@ -47,6 +48,11 @@ const api: Api = {
   backup: {
     create: () => ipcRenderer.invoke('backup:create'),
     restore: () => ipcRenderer.invoke('backup:restore'),
+    chooseDirectory: () => ipcRenderer.invoke('backup:chooseDirectory'),
+  },
+  settings: {
+    get: () => ipcRenderer.invoke('settings:get'),
+    update: (input: AppSettingsInput) => ipcRenderer.invoke('settings:update', input),
   },
   familyMembers: {
     create: (studentId: string, input: FamilyMemberInput) => ipcRenderer.invoke('familyMembers:create', studentId, input),
