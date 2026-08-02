@@ -8,6 +8,8 @@ import { registerFamilyMemberHandlers } from './familyMembers.ts'
 import { registerCertificateHandlers } from './certificates.ts'
 import { registerMembershipHandlers } from './memberships.ts'
 import { registerSettingsHandlers } from './settings.ts'
+import { registerPosHandlers } from './pos.ts'
+import { registerReportsHandlers } from './reports.ts'
 
 export function registerIpcHandlers() {
   registerStudentHandlers()
@@ -20,4 +22,6 @@ export function registerIpcHandlers() {
   registerCertificateHandlers()
   registerMembershipHandlers()
   registerSettingsHandlers()
+  registerPosHandlers()
+  registerReportsHandlers()
 }

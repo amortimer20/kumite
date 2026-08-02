@@ -238,3 +238,52 @@ model MembershipUsageAdjustment {
 
   @@index([studentMembershipId])
 }
+
+// A front-desk catalog item (merchandise, drop-in fees, etc.) — price only,
+// no stock/inventory tracking. Archived instead of deleted once it's been
+// sold at least once, same fallback as Student.active/Instructor.active.
+model PosItem {
+  id         String        @id @default(cuid())
+  name       String
+  priceCents Int
+  active     Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  saleItems  PosSaleItem[]
+}
+
+// A completed front-desk checkout. studentName is a plain-text snapshot
+// only — intentionally NOT a foreign key to Student, so deleting or
+// renaming a student never mutates or orphans historical sales, and there's
+// no relational "this student's purchase history" query. totalCents is
+// computed server-side from the line items at creation time and stored as
+// a historical fact, never trusted from the client and never recomputed.
+model PosSale {
+  id            String        @id @default(cuid())
+  studentName   String?
+  // "cash" | "card" | "check" | "other" — see POS_PAYMENT_METHODS in
+  // shared/types.ts.
+  paymentMethod String?
+  totalCents    Int
+  notes         String?
+  createdAt     DateTime      @default(now())
+  items         PosSaleItem[]
+}
+
+// One line of a sale. itemName/unitPriceCents snapshot the PosItem at sale
+// time, so a later rename or price edit on the catalog item never changes
+// a historical sale.
+model PosSaleItem {
+  id             String   @id @default(cuid())
+  sale           PosSale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleId         String
+  item           PosItem  @relation(fields: [itemId], references: [id])
+  itemId         String
+  itemName       String
+  unitPriceCents Int
+  quantity       Int
+  createdAt      DateTime @default(now())
+
+  @@index([saleId])
+  @@index([itemId])
+}

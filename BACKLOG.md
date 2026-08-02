@@ -30,6 +30,42 @@ Publisher" SmartScreen warning — not a blocker, just rougher first impression)
 
 ## Done
 
+### Financial Reports
+Added a "Reports" tab for combined revenue reporting across the two existing revenue sources —
+membership dues (`MembershipPayment`) and POS sales (`PosSale`) — over a user-picked date range.
+Quick presets (This Month / Last Month / This Year) set the range and generate immediately; a custom
+start/end date pair covers anything else, with a plain inline validation message if the end date is
+before the start date rather than silently querying an empty/nonsensical range. The report itself is
+summary totals only, not an itemized transaction list — a combined total, a count + total per source,
+and a breakdown by payment method (cash/card/check/other) — matching the "simple financial report"
+framing this was scoped to. Membership/POS inclusion is togglable via checkboxes (both on by default)
+that recompute the combined total and payment-method breakdown entirely client-side from the
+already-fetched report data, so flipping a checkbox never re-queries the database. Since
+`MembershipPayment.method` is genuinely freeform text (unlike `PosSale.paymentMethod`, already
+constrained to a closed set), it's normalized case-insensitively into the same four buckets for the
+report, with anything unrecognized — including blank/null — falling into "Other". CSV export
+(`electron/ipc/reports.ts`) mirrors the existing backup-export native-save-dialog pattern exactly
+rather than a browser download link, and reflects whichever sources are currently checked, not always
+both. No dependency was added for CSV generation — it's hand-rolled plain string joining, consistent
+with the app's existing preference for not reaching for a library where simple text formatting will
+do.
+
+### Point of Sale (POS)
+Added a POS tab for ringing up front-desk purchases (merchandise, drop-in fees, etc.) — a catalog of
+items (name + price only, no inventory/stock tracking) and a simple cart-based checkout. Selecting a
+student is optional by design: a sale never requires one, and even when a student is picked, the sale
+only stores a plain-text snapshot of their name (`PosSale.studentName`) — deliberately not a foreign
+key to `Student`, so deleting or renaming a student never touches historical sales and there's no
+"this student's purchase history" query to maintain. Each line item snapshots its item's name and
+price at sale time (`PosSaleItem.itemName`/`unitPriceCents`), so a later catalog rename or price edit
+never changes a completed sale's total — the total itself is computed server-side from the line
+items, never trusted from the client. Payment method is a closed cash/card/check/other dropdown
+rather than freeform text (unlike `MembershipPayment.method`), since a repetitive front-desk checkout
+benefits more from a fast dropdown than typing every time. Catalog items are archived instead of
+hard-deleted once they've been sold at least once (same fallback as instructors/membership plans),
+and completed sales can be deleted outright as a correction mechanism for a mis-rung sale (nothing
+else references a sale by foreign key, so this is always a clean hard delete).
+
 ### Automatic backups
 Settings > Backup & Restore now has an "Enable automatic backups" checkbox that reveals a native
 folder picker and a Frequency select (Every hour / Every 6 hours / Daily / Weekly — defaulted to

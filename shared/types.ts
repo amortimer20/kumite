@@ -330,6 +330,111 @@ export interface StudentMembershipWithStudent extends StudentMembership {
   student: Student
 }
 
+export const POS_PAYMENT_METHODS = ['cash', 'card', 'check', 'other'] as const
+
+export type PosPaymentMethod = (typeof POS_PAYMENT_METHODS)[number]
+
+// A front-desk catalog item (merchandise, drop-in fees, etc.) — price only,
+// no stock/inventory tracking.
+export interface PosItem {
+  id: string
+  name: string
+  priceCents: number
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PosItemInput {
+  name: string
+  priceCents: number
+  active?: boolean
+}
+
+export interface PosSaleItem {
+  id: string
+  saleId: string
+  itemId: string
+  // Snapshots of the item at sale time, so a later rename/price edit on the
+  // catalog item never changes a historical sale.
+  itemName: string
+  quantity: number
+  unitPriceCents: number
+  // Computed for display only, not a stored column: quantity * unitPriceCents.
+  lineTotalCents: number
+}
+
+// What the renderer sends to record a sale — just item ids and quantities.
+// The server looks up each item's current name/priceCents, snapshots them,
+// and computes totalCents itself; nothing money-related here is trusted
+// from the client.
+export interface PosSaleItemInput {
+  itemId: string
+  quantity: number
+}
+
+export interface PosSaleInput {
+  // Plain-text snapshot only — no studentId, intentionally no relation to
+  // Student. Optional: a sale doesn't require a student to be selected.
+  studentName?: string | null
+  paymentMethod?: PosPaymentMethod | null
+  notes?: string | null
+  items: PosSaleItemInput[]
+}
+
+export interface PosSale {
+  id: string
+  studentName: string | null
+  paymentMethod: string | null
+  totalCents: number
+  notes: string | null
+  createdAt: string
+  items: PosSaleItem[]
+}
+
+// Cash/card/check come from PosSale.paymentMethod directly (already
+// constrained to POS_PAYMENT_METHODS) and from a case-insensitive match on
+// MembershipPayment.method (freeform text, no enum). Anything else —
+// including null/unrecognized — buckets into "other".
+export const REPORT_PAYMENT_METHODS = ['cash', 'card', 'check', 'other'] as const
+
+export type ReportPaymentMethod = (typeof REPORT_PAYMENT_METHODS)[number]
+
+export interface ReportDateRangeInput {
+  // Plain "yyyy-mm-dd", same convention as MembershipPaymentInput.paidOn.
+  startDate: string
+  endDate: string
+}
+
+export interface ReportMethodBreakdown {
+  method: ReportPaymentMethod
+  totalCents: number
+}
+
+export interface ReportSourceBreakdown {
+  totalCents: number
+  count: number
+  // Always all 4 REPORT_PAYMENT_METHODS entries (zero-filled), not sparse —
+  // lets the UI render a stable table without filling in zeros itself.
+  byMethod: ReportMethodBreakdown[]
+}
+
+// The combined grand total and the toggled payment-method breakdown are
+// deliberately not part of this shape — the UI recomputes those from
+// membership/pos based on which sources are checked, so toggling a source
+// on/off never needs a re-fetch.
+export interface Report {
+  startDate: string
+  endDate: string
+  membership: ReportSourceBreakdown
+  pos: ReportSourceBreakdown
+}
+
+export interface ReportExportInput extends ReportDateRangeInput {
+  includeMembership: boolean
+  includePos: boolean
+}
+
 export interface Api {
   students: {
     list(): Promise<Student[]>
@@ -433,5 +538,28 @@ export interface Api {
     // Every payment across every membership this student has ever had
     // (active or long since cancelled), newest first.
     getPaymentHistory(studentId: string): Promise<MembershipPaymentWithPlan[]>
+  }
+  posItems: {
+    list(): Promise<PosItem[]>
+    create(input: PosItemInput): Promise<PosItem>
+    update(id: string, input: Partial<PosItemInput>): Promise<PosItem>
+    // Archives instead of deleting if the item has ever been sold — same
+    // fallback as membershipPlans.delete/instructors.delete.
+    delete(id: string): Promise<{ archived: boolean }>
+  }
+  posSales: {
+    // Newest first.
+    list(): Promise<PosSale[]>
+    create(input: PosSaleInput): Promise<PosSale>
+    // No archive fallback needed — nothing references a sale by foreign
+    // key, so this is always a hard delete (correction mechanism for a
+    // mis-rung sale, same "delete and redo" convention as membership
+    // payments).
+    delete(id: string): Promise<void>
+  }
+  reports: {
+    generate(input: ReportDateRangeInput): Promise<Report>
+    // Mirrors backup.create's return convention exactly.
+    exportCsv(input: ReportExportInput): Promise<{ canceled: boolean; path?: string }>
   }
 }

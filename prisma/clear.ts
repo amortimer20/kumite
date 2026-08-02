@@ -31,6 +31,10 @@ async function main() {
   await prisma.membershipPayment.deleteMany()
   await prisma.studentMembership.deleteMany()
   await prisma.membershipPlan.deleteMany()
+  // PosSaleItem cascades automatically when its PosSale is deleted, so it
+  // needs no explicit delete here.
+  await prisma.posSale.deleteMany()
+  await prisma.posItem.deleteMany()
   await prisma.student.deleteMany()
   await prisma.instructor.deleteMany()
   await prisma.businessHours.deleteMany()

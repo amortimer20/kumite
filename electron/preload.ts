@@ -13,7 +13,11 @@ import type {
   MembershipPaymentInput,
   MembershipPlanInput,
   MembershipUsageAdjustmentInput,
+  PosItemInput,
+  PosSaleInput,
   RecurringSeriesInput,
+  ReportDateRangeInput,
+  ReportExportInput,
   StudentInput,
 } from '../shared/types.ts'
 
@@ -82,6 +86,21 @@ const api: Api = {
     addUsageAdjustment: (id: string, input: MembershipUsageAdjustmentInput) =>
       ipcRenderer.invoke('studentMemberships:addUsageAdjustment', id, input),
     getPaymentHistory: (studentId: string) => ipcRenderer.invoke('studentMemberships:getPaymentHistory', studentId),
+  },
+  posItems: {
+    list: () => ipcRenderer.invoke('posItems:list'),
+    create: (input: PosItemInput) => ipcRenderer.invoke('posItems:create', input),
+    update: (id: string, input: Partial<PosItemInput>) => ipcRenderer.invoke('posItems:update', id, input),
+    delete: (id: string) => ipcRenderer.invoke('posItems:delete', id),
+  },
+  posSales: {
+    list: () => ipcRenderer.invoke('posSales:list'),
+    create: (input: PosSaleInput) => ipcRenderer.invoke('posSales:create', input),
+    delete: (id: string) => ipcRenderer.invoke('posSales:delete', id),
+  },
+  reports: {
+    generate: (input: ReportDateRangeInput) => ipcRenderer.invoke('reports:generate', input),
+    exportCsv: (input: ReportExportInput) => ipcRenderer.invoke('reports:exportCsv', input),
   },
 }
 

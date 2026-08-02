@@ -306,9 +306,21 @@ async function main() {
     },
   })
 
+  // --- POS catalog (front-desk merchandise) ---
+  const posItems = await Promise.all([
+    prisma.posItem.create({ data: { name: 'Gloves', priceCents: 2500 } }),
+    prisma.posItem.create({ data: { name: 'Hand wraps', priceCents: 1000 } }),
+    prisma.posItem.create({ data: { name: 'Kumite gear', priceCents: 6000 } }),
+    prisma.posItem.create({ data: { name: 'Picture manual', priceCents: 1500 } }),
+    prisma.posItem.create({ data: { name: 'T-Shirt', priceCents: 2000 } }),
+    prisma.posItem.create({ data: { name: 'Uniform', priceCents: 5500 } }),
+    prisma.posItem.create({ data: { name: 'Belt', priceCents: 1200 } }),
+  ])
+
   console.log(
     `Seeded ${students.length} students (1 archived), 4 instructors (1 archived), ${familyMembers.length} family members, ` +
-      `6 membership plans (1 archived), 7 memberships spanning ok/due_soon/overdue, and a mix of private/group/recurring lessons.`,
+      `6 membership plans (1 archived), 7 memberships spanning ok/due_soon/overdue, a mix of private/group/recurring lessons, ` +
+      `and ${posItems.length} POS catalog items.`,
   )
 }
 

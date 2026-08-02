@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarDays, LayoutDashboard, Users, UserCog, Award, Settings } from 'lucide-react'
+import { CalendarDays, LayoutDashboard, Users, UserCog, Award, Settings, ShoppingCart, BarChart3 } from 'lucide-react'
 import './App.css'
 import { DashboardPanel } from './components/DashboardPanel'
 import { StudentsPanel } from './components/StudentsPanel'
@@ -7,11 +7,13 @@ import { InstructorsPanel } from './components/InstructorsPanel'
 import { SchedulePanel } from './components/SchedulePanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { CertificatesPanel } from './components/CertificatesPanel'
+import { PosPanel } from './components/PosPanel'
+import { ReportsPanel } from './components/ReportsPanel'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
-const TABS = ['Dashboard', 'Schedule', 'Students', 'Instructors', 'Certificates', 'Settings'] as const
+const TABS = ['Dashboard', 'Schedule', 'Students', 'Instructors', 'Certificates', 'POS', 'Reports', 'Settings'] as const
 type Tab = (typeof TABS)[number]
 
 const TAB_ICONS: Record<Tab, typeof CalendarDays> = {
@@ -20,6 +22,8 @@ const TAB_ICONS: Record<Tab, typeof CalendarDays> = {
   Students: Users,
   Instructors: UserCog,
   Certificates: Award,
+  POS: ShoppingCart,
+  Reports: BarChart3,
   Settings: Settings,
 }
 
@@ -53,6 +57,8 @@ function App() {
           {tab === 'Students' && <StudentsPanel />}
           {tab === 'Instructors' && <InstructorsPanel />}
           {tab === 'Certificates' && <CertificatesPanel />}
+          {tab === 'POS' && <PosPanel />}
+          {tab === 'Reports' && <ReportsPanel />}
           {tab === 'Settings' && <SettingsPanel />}
         </main>
         <Toaster />

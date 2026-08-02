@@ -19,3 +19,29 @@ export function dateToIso(d: Date) {
 export function isoDateToInstant(isoDate: string) {
   return new Date(`${isoDate}T00:00:00`).toISOString()
 }
+
+// Calendar-boundary presets for the Reports date-range picker.
+export function startOfMonthIso(d: Date = new Date()) {
+  return dateToIso(new Date(d.getFullYear(), d.getMonth(), 1))
+}
+
+export function endOfMonthIso(d: Date = new Date()) {
+  // Day 0 of next month = last day of this month.
+  return dateToIso(new Date(d.getFullYear(), d.getMonth() + 1, 0))
+}
+
+export function startOfLastMonthIso(d: Date = new Date()) {
+  return dateToIso(new Date(d.getFullYear(), d.getMonth() - 1, 1))
+}
+
+export function endOfLastMonthIso(d: Date = new Date()) {
+  return dateToIso(new Date(d.getFullYear(), d.getMonth(), 0))
+}
+
+export function startOfYearIso(d: Date = new Date()) {
+  return dateToIso(new Date(d.getFullYear(), 0, 1))
+}
+
+export function endOfYearIso(d: Date = new Date()) {
+  return dateToIso(new Date(d.getFullYear(), 11, 31))
+}
