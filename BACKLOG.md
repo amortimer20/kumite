@@ -28,6 +28,28 @@ untested: do a real Windows build/install/upgrade pass to confirm it works as ex
 whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
+## Non-traditional membership fees (needs clarification)
+The last feature-shaped gap before the app is considered feature-complete for its first iteration.
+Blocked on the studio owner working out the actual business rules — not yet a design, just the open
+questions to resolve before one can be written:
+- **Paying for one or more extra lessons.** How does this affect the membership's due date? Does it
+  make the existing "included private lessons per plan" / bonus-lesson mechanism redundant, or do the
+  two coexist? Does an extra-lesson purchase carry over into the next billing month if unused, or does
+  it expire at the period boundary like the plan's included lessons currently do?
+- **Pro-rating.** What does "pro rate" mean here in practice — a mid-cycle plan change/upgrade
+  prorated to the remaining days in the period, a prorated first payment for someone joining mid-month,
+  or something else the studio does today that isn't represented in the app at all yet?
+- **Pay-as-you-go membership.** Does the studio actually offer this as a membership type (as opposed
+  to just POS drop-in sales, which already exist)? If so, it likely doesn't fit the current
+  `MembershipPlan` model's assumption of a fixed recurring price/billing frequency, and touches due-date
+  and balance-owed logic (`electron/ipc/memberships.ts`) that assumes a regular billing cycle.
+
+## Black belt certificate templates — waiting on real files
+Already tracked above ("Black belt certificate templates (1st-10th degree) still placeholders") —
+noting here that this is specifically blocked on the studio owner sourcing/providing the actual
+template files, not on any further design work; the swap-in mechanism described above is already
+built and ready.
+
 ## Done
 
 ### In-app Help panel
