@@ -45,7 +45,7 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[85vh] max-w-4xl flex-col">
+      <DialogContent className="flex h-[85vh] sm:max-w-4xl flex-col">
         <DialogHeader>
           <DialogTitle>Help</DialogTitle>
         </DialogHeader>
@@ -107,9 +107,9 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
               <div className="flex flex-col gap-3 text-sm">
                 <p>
                   Search and filter students, including a toggle to show archived (inactive) students.
-                  <strong> Add Student</strong> opens a form for contact info, address, rank, and member-
-                  since date — signing requires agreeing to the Release &amp; Indemnity waiver shown in
-                  the form.
+                  <strong> Add Student</strong> opens a form for contact info, address, rank, and
+                  member-since date — signing requires agreeing to the Release &amp; Indemnity waiver
+                  shown in the form.
                 </p>
                 <p>
                   Each row has <strong>Details</strong> (read-only info, including family members),
@@ -127,8 +127,8 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
             {section === 'instructors' && (
               <div className="flex flex-col gap-3 text-sm">
                 <p>
-                  Full CRUD for instructors: search, show archived, add (name/email/phone), Details, Edit,
-                  and Delete.
+                  Search instructors and toggle showing archived ones. <strong>Add Instructor</strong>{' '}
+                  takes a name, email, and phone number. Each row has Details, Edit, and Delete.
                 </p>
                 <p>
                   Deleting an instructor with upcoming lessons warns you that those lessons will also be
@@ -180,8 +180,8 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   method.
                 </p>
                 <p>
-                  <strong>Export CSV</strong> saves the report to a file for spreadsheets or record-
-                  keeping.
+                  <strong>Export CSV</strong> saves the report to a file for spreadsheets or
+                  record-keeping.
                 </p>
               </div>
             )}
@@ -192,9 +192,9 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   used on the Schedule tab to show open slots between lessons.
                 </p>
                 <p>
-                  <strong>Membership Plans</strong> is a CRUD table for plan titles, billing frequency,
-                  price, and included private lessons. A plan with students on it is archived instead of
-                  deleted.
+                  <strong>Membership Plans</strong> lists every plan's title, billing frequency, price,
+                  and included private lessons, and lets you add, edit, or delete plans. A plan with
+                  students on it is archived instead of deleted.
                 </p>
                 <p>
                   <strong>Backup &amp; Restore</strong> lets you export or restore a backup file manually,
