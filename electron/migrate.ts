@@ -41,10 +41,19 @@ function appliedMigrationNames(db: Database.Database): Set<string> {
 // install — where the database file doesn't exist yet — ends up with the
 // full schema instead of failing on the first query.
 //
-// Each migration file is executed on its own (not wrapped in an extra
-// transaction here) because several of them toggle `PRAGMA foreign_keys`
-// around a table-rebuild, and that pragma is a no-op once a transaction is
-// already open — wrapping it ourselves would silently defeat it.
+// Each migration runs inside one transaction, together with the row that
+// records it, so an interrupted upgrade (force-quit, power loss, the file
+// briefly locked by antivirus) rolls all the way back instead of leaving a
+// half-migrated database. That matters because several migrations rebuild a
+// table by creating a copy, dropping the original, and renaming — without a
+// transaction, dying midway leaves the original table already dropped and
+// every subsequent launch failing on "table already exists", with no way in.
+//
+// `PRAGMA foreign_keys` is a no-op once a transaction is open, so it's set
+// here, outside the transaction, instead of relying on the copies inside the
+// migration files. The rebuilds also emit `PRAGMA defer_foreign_keys=ON`,
+// which *does* work inside a transaction, so constraints are still enforced
+// at commit time.
 export function applyPendingMigrations(dbPath: string) {
   if (!fs.existsSync(migrationsDir)) return
 
@@ -62,12 +71,33 @@ export function applyPendingMigrations(dbPath: string) {
     for (const name of migrationNames) {
       if (applied.has(name)) continue
       const sql = fs.readFileSync(path.join(migrationsDir, name, 'migration.sql'), 'utf8')
-      db.exec(sql)
-      db.prepare(
-        `INSERT INTO "_prisma_migrations"
-           (id, checksum, finished_at, migration_name, started_at, applied_steps_count)
-         VALUES (?, ?, current_timestamp, ?, current_timestamp, 1)`,
-      ).run(crypto.randomUUID(), crypto.createHash('sha256').update(sql).digest('hex'), name)
+
+      db.pragma('foreign_keys = OFF')
+      try {
+        // BEGIN IMMEDIATE takes the write lock up front, so a second instance
+        // racing the same upgrade blocks here rather than interleaving
+        // statements with this one.
+        db.exec('BEGIN IMMEDIATE')
+        db.exec(sql)
+        db.prepare(
+          `INSERT INTO "_prisma_migrations"
+             (id, checksum, finished_at, migration_name, started_at, applied_steps_count)
+           VALUES (?, ?, current_timestamp, ?, current_timestamp, 1)`,
+        ).run(crypto.randomUUID(), crypto.createHash('sha256').update(sql).digest('hex'), name)
+        db.exec('COMMIT')
+      } catch (err) {
+        try {
+          db.exec('ROLLBACK')
+        } catch {
+          // Already rolled back (or never opened) — the original error is what
+          // matters, so don't let a rollback failure mask it.
+        }
+        throw new Error(
+          `Database update "${name}" could not be applied and was rolled back. ${err instanceof Error ? err.message : String(err)}`,
+        )
+      } finally {
+        db.pragma('foreign_keys = ON')
+      }
     }
   } finally {
     db.close()

@@ -51,35 +51,66 @@ export function registerStudentHandlers() {
     return serializeStudent(student)
   })
 
-  // A student with any lesson history can't be hard-deleted (foreign key), so
-  // that case falls back to archiving them instead, keeping history intact —
-  // unless force is set, which deletes their lessons/recurring series first
-  // so the student can be hard-deleted regardless.
   ipcMain.handle('students:delete', async (_event, id: string, options?: { force?: boolean }) => {
-    if (options?.force) {
-      await prisma.$transaction([
-        prisma.lesson.deleteMany({ where: { studentId: id } }),
-        prisma.recurringSeries.deleteMany({ where: { studentId: id } }),
-        // Payments/adjustments must go before their StudentMembership rows,
-        // which must go before the student itself — all restrict-on-delete.
-        prisma.membershipUsageAdjustment.deleteMany({ where: { studentMembership: { studentId: id } } }),
-        prisma.membershipPayment.deleteMany({ where: { studentMembership: { studentId: id } } }),
-        prisma.studentMembership.deleteMany({ where: { studentId: id } }),
-        prisma.student.delete({ where: { id } }),
-      ])
-      return { archived: false }
-    }
-    try {
-      await prisma.student.delete({ where: { id } })
-      return { archived: false }
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
-        await prisma.student.update({ where: { id }, data: { active: false } })
-        await endActiveSeriesForStudent(id)
-        await cancelActiveMembershipForStudent(id)
-        return { archived: true }
-      }
-      throw err
-    }
+    return deleteStudent(id, options)
   })
+}
+
+// Whether deleting this student would destroy or orphan anything worth
+// keeping. This is checked explicitly rather than inferred from a foreign-key
+// error: Lesson.studentId and RecurringSeries.studentId are both
+// `ON DELETE SET NULL`, so deleting a student with lessons *succeeds* and
+// silently leaves behind nameless private lessons. Only StudentMembership
+// still restricts, so relying on the error meant students without a membership
+// were hard-deleted even when the caller asked to archive.
+async function studentHasHistory(id: string) {
+  const [lessons, series, memberships] = await Promise.all([
+    prisma.lesson.count({ where: { studentId: id } }),
+    prisma.recurringSeries.count({ where: { studentId: id } }),
+    prisma.studentMembership.count({ where: { studentId: id } }),
+  ])
+  return lessons > 0 || series > 0 || memberships > 0
+}
+
+async function archiveStudent(id: string) {
+  await prisma.student.update({ where: { id }, data: { active: false } })
+  await endActiveSeriesForStudent(id)
+  await cancelActiveMembershipForStudent(id)
+}
+
+// A student with lesson, series, or membership history is archived rather than
+// deleted, so that history stays attributable — unless force is set, which
+// deletes those dependents first so the student can be removed outright.
+// Exported for tests; the IPC handler is a thin wrapper.
+export async function deleteStudent(id: string, options?: { force?: boolean }) {
+  if (options?.force) {
+    await prisma.$transaction([
+      prisma.lesson.deleteMany({ where: { studentId: id } }),
+      prisma.recurringSeries.deleteMany({ where: { studentId: id } }),
+      // Payments/adjustments must go before their StudentMembership rows,
+      // which must go before the student itself — all restrict-on-delete.
+      prisma.membershipUsageAdjustment.deleteMany({ where: { studentMembership: { studentId: id } } }),
+      prisma.membershipPayment.deleteMany({ where: { studentMembership: { studentId: id } } }),
+      prisma.studentMembership.deleteMany({ where: { studentId: id } }),
+      prisma.student.delete({ where: { id } }),
+    ])
+    return { archived: false }
+  }
+  if (await studentHasHistory(id)) {
+    await archiveStudent(id)
+    return { archived: true }
+  }
+  try {
+    await prisma.student.delete({ where: { id } })
+    return { archived: false }
+  } catch (err) {
+    // Belt and braces: if some dependent the check above doesn't know about
+    // still restricts the delete, archive rather than surfacing a raw
+    // foreign-key error.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      await archiveStudent(id)
+      return { archived: true }
+    }
+    throw err
+  }
 }

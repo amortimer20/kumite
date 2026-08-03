@@ -195,29 +195,47 @@ export function StudentsPanel() {
     const confirmed = window.confirm(`Delete ${student.firstName} ${student.lastName}? This cannot be undone.`)
     if (!confirmed) return
 
-    const { archived } = await api.students.delete(student.id)
-    if (archived) {
-      toast.info(`${student.firstName} ${student.lastName} has lesson history, so they were archived instead of deleted.`)
-    } else {
-      toast.success(`${student.firstName} ${student.lastName} deleted.`)
+    try {
+      const { archived } = await api.students.delete(student.id)
+      if (archived) {
+        toast.info(`${student.firstName} ${student.lastName} has history on file, so they were archived instead of deleted.`)
+      } else {
+        toast.success(`${student.firstName} ${student.lastName} deleted.`)
+      }
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
     }
-    await refresh()
   }
 
+  // Reports what actually happened rather than assuming: the backend archives
+  // only when the student still has history, so a student whose last lesson
+  // was just deleted is genuinely removed, and saying "archived" would be a
+  // lie.
   async function handleArchiveFromModal() {
     if (!deleteModalStudent) return
-    await api.students.delete(deleteModalStudent.id)
-    toast.success(`${deleteModalStudent.firstName} ${deleteModalStudent.lastName} archived.`)
-    setDeleteModalStudent(null)
-    await refresh()
+    const { firstName, lastName } = deleteModalStudent
+    try {
+      const { archived } = await api.students.delete(deleteModalStudent.id)
+      toast.success(archived ? `${firstName} ${lastName} archived.` : `${firstName} ${lastName} deleted.`)
+      setDeleteModalStudent(null)
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   async function handleDeleteEverythingFromModal() {
     if (!deleteModalStudent) return
-    await api.students.delete(deleteModalStudent.id, { force: true })
-    toast.success(`${deleteModalStudent.firstName} ${deleteModalStudent.lastName}, their lessons, and any membership/billing history deleted.`)
-    setDeleteModalStudent(null)
-    await refresh()
+    const { firstName, lastName } = deleteModalStudent
+    try {
+      await api.students.delete(deleteModalStudent.id, { force: true })
+      toast.success(`${firstName} ${lastName}, their lessons, and any membership/billing history deleted.`)
+      setDeleteModalStudent(null)
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   async function handleReactivate(student: Student) {

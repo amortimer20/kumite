@@ -33,3 +33,6 @@ dist-electron
 
 # Environment variables
 .env
+
+# Packaged installers (electron-builder output)
+release/

@@ -217,9 +217,15 @@ export function SettingsPanel() {
   }
 
   async function handleBackup() {
-    const result = await api.backup.create()
-    if (!result.canceled) {
-      toast.success(`Backup saved to ${result.path}`)
+    try {
+      const result = await api.backup.create()
+      if (!result.canceled) {
+        toast.success(`Backup saved to ${result.path}`)
+      }
+    } catch (err) {
+      // A failed export must never look like a cancelled one — this is the
+      // app's only recovery mechanism.
+      toast.error(getErrorMessage(err))
     }
   }
 
@@ -230,11 +236,19 @@ export function SettingsPanel() {
     if (!confirmed) return
 
     setRestoring(true)
-    const result = await api.backup.restore()
-    if (result.canceled) {
+    try {
+      const result = await api.backup.restore()
+      if (result.canceled) {
+        setRestoring(false)
+      }
+      // Otherwise the app is relaunching now; leave the UI in its "restoring" state.
+    } catch (err) {
+      // The backend rejects a file that isn't a usable Kumite backup. Clear the
+      // "restoring" state, or the panel would sit there waiting for a restart
+      // that is never coming.
       setRestoring(false)
+      toast.error(getErrorMessage(err))
     }
-    // Otherwise the app is relaunching now; leave the UI in its "restoring" state.
   }
 
   return (
