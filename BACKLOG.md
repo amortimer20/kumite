@@ -28,6 +28,23 @@ untested: do a real Windows build/install/upgrade pass to confirm it works as ex
 whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
+## Watch item: one unexplained 30s startup hang after rapid kill/relaunch cycling
+Seen once while verifying the packaged mac build, right after the single-instance lock was added. The
+app started, printed Chromium singleton errors (`write() failed: Broken pipe`, `Failed to extract pid
+from path: .../SingletonLock`), took ownership of the lock, and then never ran the startup migrations
+at all — no window, no database, process alive and idle indefinitely. It happened after several
+`kill -9`/relaunch cycles in quick succession, so the previous instance's `SingletonSocket` was
+probably being torn down mid-negotiation.
+**Not reproducible**: a clean start migrates in ~1s, and a deliberate `kill -9` followed by an
+immediate relaunch takes the lock cleanly with no errors. Left here because it involved new code
+(`app.requestSingleInstanceLock()` in `electron/main.ts`) and the symptom — an app that is running but
+does nothing, forever — is the worst possible one to hit at a studio. If it recurs, the thing to check
+is whether `app.whenReady()` ever resolves; a `--user-data-dir` conflict or a stale `SingletonSocket`
+in `%APPDATA%`/Application Support is the likely culprit, and deleting the three Singleton* entries
+clears it. Related: `reportFatalError` uses the blocking modal `dialog.showErrorBox` and is wired to
+`process.on('uncaughtException')`, so an early crash shows a dialog and waits rather than exiting —
+correct when someone is at the keyboard, wedged when nobody is.
+
 ## No way to raise the price for students already on a plan
 Plan price/cadence edits now apply to new sign-ups only — existing memberships bill at the price they
 were signed up at (see "Membership billing no longer re-bills the past" in Done). That was the
