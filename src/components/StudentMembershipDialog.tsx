@@ -338,7 +338,9 @@ export function StudentMembershipDialog({
                     </div>
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {formatCents(membership.effectivePriceCents)} / {FREQUENCY_LABEL[membership.plan.billingFrequency].toLowerCase()}
+                    {/* The membership's own snapshotted terms, not the plan's current
+                        ones — those can differ once the plan has been edited. */}
+                    {formatCents(membership.effectivePriceCents)} / {FREQUENCY_LABEL[membership.billingFrequency].toLowerCase()}
                     {membership.priceOverrideCents != null && ' (custom price)'}
                     {' — next due '}
                     {new Date(membership.nextDueDate).toLocaleDateString()}

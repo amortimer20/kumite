@@ -200,6 +200,12 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   students on it is archived instead of deleted.
                 </p>
                 <p>
+                  Editing a plan's price or billing frequency applies to <strong>new sign-ups only</strong>.
+                  Students already on the plan keep the price they signed up at, so that changing a plan
+                  can never re-bill past months or make a paid-up student suddenly look overdue. To change
+                  what an existing student pays, open their Membership and set a custom price there.
+                </p>
+                <p>
                   <strong>Backup &amp; Restore</strong> lets you export or restore a backup file manually,
                   and also configure automatic backups to a folder of your choice on a schedule.
                 </p>

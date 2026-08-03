@@ -127,7 +127,13 @@ describe('deleteStudent', () => {
       data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
     })
     const membership = await mockPrisma.studentMembership.create({
-      data: { studentId: student.id, planId: plan.id, startDate: new Date(Date.now() - 30 * DAY_MS) },
+      data: {
+        studentId: student.id,
+        planId: plan.id,
+        billedPriceCents: 10_000,
+        billingFrequency: 'monthly',
+        startDate: new Date(Date.now() - 30 * DAY_MS),
+      },
     })
     const payment = await mockPrisma.membershipPayment.create({
       data: { studentMembershipId: membership.id, amountCents: 10_000, paidOn: new Date() },

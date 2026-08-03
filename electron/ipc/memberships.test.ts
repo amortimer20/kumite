@@ -18,6 +18,8 @@ const {
   getMembershipForStudent,
   getPaymentHistoryForStudent,
   recordMembershipPayment,
+  updateMembership,
+  updateMembershipPlan,
 } = await import('./memberships.ts')
 
 let testDb: Awaited<ReturnType<typeof createTestDb>>
@@ -58,6 +60,139 @@ describe('assignMembership', () => {
     expect(membership.studentId).toBe(student.id)
     expect(membership.planId).toBe(plan.id)
     expect(membership.active).toBe(true)
+  })
+})
+
+const DAY_MS = 86_400_000
+
+// Regression tests for the pre-beta review's worst money bug. The balance is
+// recomputed from startDate on every read, so when it read the plan's *current*
+// price and cadence, editing a plan silently rewrote every past period for
+// every student on it.
+describe('plan edits do not re-bill existing memberships', () => {
+  it('raising a plan price leaves a paid-up member paid up', async () => {
+    const student = await makeStudent()
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    // Joined 3 months ago and has paid every month since.
+    const startDate = new Date(Date.now() - 70 * DAY_MS)
+    const membership = await assignMembership(student.id, {
+      planId: plan.id,
+      startDate: startDate.toISOString(),
+    })
+    for (let i = 0; i < 3; i++) {
+      await recordMembershipPayment(membership.id, { amountCents: 10_000, paidOn: new Date().toISOString() })
+    }
+    const before = await getMembershipForStudent(student.id)
+    expect(before?.amountOwedCents).toBe(0)
+
+    // The studio raises the price for new sign-ups.
+    await updateMembershipPlan(plan.id, { priceCents: 12_000 })
+
+    const after = await getMembershipForStudent(student.id)
+    // Previously: 3 elapsed periods x the NEW $120 = $360 charged against $300
+    // paid, so this student suddenly owed $60 and flipped to overdue.
+    expect(after?.amountOwedCents).toBe(0)
+    expect(after?.status).not.toBe('overdue')
+    // They keep billing at what they signed up at.
+    expect(after?.effectivePriceCents).toBe(10_000)
+    // The plan itself did change, for anyone assigned to it from now on.
+    expect(after?.plan.priceCents).toBe(12_000)
+  })
+
+  it('changing a plan cadence does not recount an existing member\'s history', async () => {
+    const student = await makeStudent()
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const membership = await assignMembership(student.id, {
+      planId: plan.id,
+      startDate: new Date(Date.now() - 70 * DAY_MS).toISOString(),
+    })
+    for (let i = 0; i < 3; i++) {
+      await recordMembershipPayment(membership.id, { amountCents: 10_000, paidOn: new Date().toISOString() })
+    }
+
+    await updateMembershipPlan(plan.id, { billingFrequency: 'weekly' })
+
+    const after = await getMembershipForStudent(student.id)
+    // Previously: ~10 weekly periods x $100 = $1,000 charged against $300 paid.
+    expect(after?.amountOwedCents).toBe(0)
+    expect(after?.billingFrequency).toBe('monthly')
+  })
+
+  it('a new sign-up after a price rise gets the new price', async () => {
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    await updateMembershipPlan(plan.id, { priceCents: 12_000 })
+
+    const newStudent = await makeStudent()
+    const membership = await assignMembership(newStudent.id, {
+      planId: plan.id,
+      startDate: new Date().toISOString(),
+    })
+    expect(membership.effectivePriceCents).toBe(12_000)
+    expect(membership.amountOwedCents).toBe(12_000)
+  })
+})
+
+describe('switching plans across billing cadences', () => {
+  it('does not turn past payments into free future periods', async () => {
+    const student = await makeStudent()
+    const monthly = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const weekly = await mockPrisma.membershipPlan.create({
+      data: { title: 'Weekly', billingFrequency: 'weekly', priceCents: 5_000 },
+    })
+
+    // Six months in, paid in full the whole way.
+    const membership = await assignMembership(student.id, {
+      planId: monthly.id,
+      startDate: new Date(Date.now() - 160 * DAY_MS).toISOString(),
+    })
+    const paidUp = await getMembershipForStudent(student.id)
+    const periodsSoFar = paidUp!.amountOwedCents / 10_000
+    for (let i = 0; i < periodsSoFar; i++) {
+      await recordMembershipPayment(membership.id, { amountCents: 10_000, paidOn: new Date().toISOString() })
+    }
+    expect((await getMembershipForStudent(student.id))?.amountOwedCents).toBe(0)
+
+    await updateMembership(membership.id, { planId: weekly.id })
+
+    const after = await getMembershipForStudent(student.id)
+    // The anchor resets to today for the new weekly cadence, so exactly one
+    // weekly period is now owed. Previously the months of monthly payments were
+    // re-read as credit against $50/week, handing out ~14 free weeks.
+    expect(after?.billingFrequency).toBe('weekly')
+    expect(after?.effectivePriceCents).toBe(5_000)
+    expect(after?.amountOwedCents).toBe(5_000)
+  })
+
+  it('carries an unpaid balance forward instead of clearing it', async () => {
+    const student = await makeStudent()
+    const monthly = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const weekly = await mockPrisma.membershipPlan.create({
+      data: { title: 'Weekly', billingFrequency: 'weekly', priceCents: 5_000 },
+    })
+
+    // Two monthly periods elapsed, nothing paid — $200 owed.
+    const membership = await assignMembership(student.id, {
+      planId: monthly.id,
+      startDate: new Date(Date.now() - 40 * DAY_MS).toISOString(),
+    })
+    const owedBefore = (await getMembershipForStudent(student.id))!.amountOwedCents
+    expect(owedBefore).toBe(20_000)
+
+    await updateMembership(membership.id, { planId: weekly.id })
+
+    const after = await getMembershipForStudent(student.id)
+    // The old debt survives the switch, plus the first week on the new plan.
+    expect(after?.amountOwedCents).toBe(owedBefore + 5_000)
   })
 })
 

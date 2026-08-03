@@ -28,6 +28,27 @@ untested: do a real Windows build/install/upgrade pass to confirm it works as ex
 whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
+## No way to raise the price for students already on a plan
+Plan price/cadence edits now apply to new sign-ups only — existing memberships bill at the price they
+were signed up at (see "Membership billing no longer re-bills the past" in Done). That was the
+deliberate choice, because the alternative was the bug it replaced: editing a plan rewrote every past
+period for everyone on it. The gap it leaves is that raising prices for existing members means opening
+each student's Membership and setting a custom price by hand, which doesn't scale past a handful.
+Worth adding a prompt on save — "apply to the N students on this plan from today forward?" — which
+would re-snapshot those memberships and bank their current term into `priorChargesCents`, exactly the
+mechanism a cadence-changing plan switch already uses. Past periods must keep the old price either
+way.
+
+## Membership billing has no per-period charge ledger
+`amountOwedCents` is derived (`priorChargesCents` + periods elapsed x snapshotted price - total paid)
+rather than read from a list of what was actually charged when. That's why the snapshot and
+`priorChargesCents` fields exist at all: without them, anything that changed a price or an anchor
+retroactively rewrote history. It works and is now correct for the cases the app supports, but a real
+ledger (one row per period charged, with its own price) would make partial-period proration,
+mid-period plan changes, and "show me exactly why this student owes this" straightforwardly
+expressible instead of needing another carry-forward field each time. Worth considering before the
+non-traditional-fees work below, since that's likely to need proration.
+
 ## Non-traditional membership fees (needs clarification)
 The last feature-shaped gap before the app is considered feature-complete for its first iteration.
 Blocked on the studio owner working out the actual business rules — not yet a design, just the open
@@ -51,6 +72,24 @@ template files, not on any further design work; the swap-in mechanism described 
 built and ready.
 
 ## Done
+
+### Membership billing no longer re-bills the past
+The balance is recomputed from `startDate` on every read, and it used to read the plan's *current*
+price and cadence — so editing a membership plan retroactively rewrote every past period for every
+student on it. Raising a plan from $100 to $120 invented back-debt for everyone enrolled and flipped
+paid-up students to overdue; changing monthly to weekly recounted a $700-paid student as owing $2,000;
+and switching a student to a plan with a different cadence re-read their old payments as credit against
+the new price, handing out months of free membership.
+
+`StudentMembership` now snapshots `billedPriceCents` and `billingFrequency` at assign time (and
+re-snapshots when the student is moved to a different plan), so plan edits apply to new sign-ups only —
+the grandfathering behaviour chosen deliberately over auto-applying changes, since past periods must
+never be re-priced. A third field, `priorChargesCents`, banks what a closed term charged when the
+billing anchor is reset, keeping `owed = (ever charged) - (ever paid)` instead of letting pre-reset
+periods stop being owed. Existing rows were backfilled from their current plan, which is exactly what
+the math was already using for them, so no student's balance changed on migration. The plan edit dialog
+and Help now state that changes apply to new sign-ups only, so a price change doesn't look like it
+silently did nothing. See Backlog above for the two follow-ons this leaves.
 
 ### In-app Help panel
 A "?" icon button in the header (next to Settings, not a new top-level tab) opens a Help overlay with

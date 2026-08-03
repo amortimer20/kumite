@@ -101,8 +101,18 @@ async function createMembership({
   priceOverrideCents?: number
   payments: { amountCents: number; paidOn: Date; method?: string; notes?: string }[]
 }) {
+  // billedPriceCents/billingFrequency are snapshotted onto the membership, so
+  // seed them from the plan the same way assignMembership does.
+  const plan = await prisma.membershipPlan.findUniqueOrThrow({ where: { id: planId } })
   const membership = await prisma.studentMembership.create({
-    data: { studentId, planId, startDate, priceOverrideCents: priceOverrideCents ?? null },
+    data: {
+      studentId,
+      planId,
+      startDate,
+      priceOverrideCents: priceOverrideCents ?? null,
+      billedPriceCents: plan.priceCents,
+      billingFrequency: plan.billingFrequency,
+    },
   })
   for (const payment of payments) {
     await prisma.membershipPayment.create({

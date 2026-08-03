@@ -538,6 +538,18 @@ export function SettingsPanel() {
           <DialogHeader>
             <DialogTitle>Edit Membership Plan</DialogTitle>
           </DialogHeader>
+          {/* Without this, a price change looks like it silently did nothing:
+              existing memberships keep the price they were signed up at, by
+              design, so that editing a plan can't rewrite past billing. */}
+          <p className="text-sm text-muted-foreground">
+            Price and billing frequency changes apply to new sign-ups only.
+            {editingPlan && editingPlan.studentCount > 0 && (
+              <>
+                {' '}The {editingPlan.studentCount} student{editingPlan.studentCount === 1 ? '' : 's'} already on this
+                plan keep their current price — change it on their membership if you need to.
+              </>
+            )}
+          </p>
           <form className="flex flex-col gap-3" onSubmit={handleSaveEditPlan}>
             <div>
               <Label className="mb-1">Title</Label>

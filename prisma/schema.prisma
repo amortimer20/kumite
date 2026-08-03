@@ -202,8 +202,26 @@ model StudentMembership {
   studentId          String
   plan               MembershipPlan              @relation(fields: [planId], references: [id])
   planId             String
-  // null = use the plan's own priceCents; set to record a custom deal.
+  // null = use billedPriceCents; set to record a custom deal.
   priceOverrideCents Int?
+  // The plan's price and cadence as they were when this membership was created
+  // (or last moved to a different plan). Billing math uses these, never the
+  // plan's current values: the balance is recomputed from startDate on every
+  // read, so reading live plan values meant editing a plan retroactively
+  // rewrote every past period for everyone on it — raising a price invented
+  // back-debt and flipped paid-up students to overdue. Plan edits therefore
+  // apply to new sign-ups only; existing memberships keep what they were
+  // signed up at until explicitly moved.
+  billedPriceCents   Int
+  billingFrequency   String
+  // Total ever charged across earlier, now-closed billing terms. startDate is
+  // the anchor for the *current* term only, and it gets reset when a student
+  // moves to a plan with a different cadence — without this, the periods
+  // before that reset would simply stop being owed, and payments made against
+  // them would be counted as credit toward the new term (a student who had
+  // paid $700 monthly and moved to a $50 weekly plan came out 14 weeks
+  // prepaid). Charges accumulate here so owed stays (ever charged - ever paid).
+  priorChargesCents  Int                         @default(0)
   startDate          DateTime
   // Set to false when the student is archived/deleted, or they cancel
   // outright — mirrors Student.active/Instructor.active.

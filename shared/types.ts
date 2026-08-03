@@ -308,8 +308,16 @@ export interface StudentMembership {
   id: string
   studentId: string
   planId: string
-  // null = use plan.priceCents.
+  // null = use billedPriceCents.
   priceOverrideCents: number | null
+  // The plan's price and cadence as of when this membership was created (or
+  // last moved to a different plan). Billing uses these, not plan.priceCents /
+  // plan.billingFrequency, so editing a plan never re-bills existing members —
+  // plan edits apply to new sign-ups only.
+  billedPriceCents: number
+  billingFrequency: MembershipBillingFrequency
+  // Total charged in earlier billing terms, before the current startDate anchor.
+  priorChargesCents: number
   startDate: string
   active: boolean
   createdAt: string
@@ -317,7 +325,7 @@ export interface StudentMembership {
   payments: MembershipPayment[]
   usageAdjustments: MembershipUsageAdjustment[]
   // --- Computed server-side, not stored ---
-  // priceOverrideCents ?? plan.priceCents
+  // priceOverrideCents ?? billedPriceCents
   effectivePriceCents: number
   currentPeriodStart: string
   currentPeriodEnd: string
@@ -325,9 +333,9 @@ export interface StudentMembership {
   // see amountOwedCents below for how that's derived.
   nextDueDate: string
   status: MembershipStatus
-  // (periods elapsed since startDate x effectivePriceCents) - (sum of all
-  // payments), floored at 0. A split payment leaves the remainder here
-  // instead of silently reading as "paid in full."
+  // (priorChargesCents + periods elapsed since startDate x effectivePriceCents)
+  // - (sum of all payments), floored at 0. A split payment leaves the remainder
+  // here instead of silently reading as "paid in full."
   amountOwedCents: number
   // Non-cancelled lessons in the current period, plus usage adjustments. A
   // lesson counts as soon as it's scheduled — only cancelling it releases

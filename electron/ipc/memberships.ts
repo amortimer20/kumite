@@ -1,7 +1,13 @@
 import { ipcMain } from 'electron'
 import { Prisma } from '../../generated/prisma/client.ts'
 import { prisma } from '../db.ts'
-import { computeMembershipBalance, computeMembershipStatus, computeUsage, currentPeriodBounds } from '../membershipLogic.ts'
+import {
+  chargesForTerm,
+  computeMembershipBalance,
+  computeMembershipStatus,
+  computeUsage,
+  currentPeriodBounds,
+} from '../membershipLogic.ts'
 import type {
   MembershipPaymentInput,
   MembershipPlanInput,
@@ -35,6 +41,9 @@ type MembershipForSerialize = {
   studentId: string
   startDate: Date
   priceOverrideCents: number | null
+  billedPriceCents: number
+  billingFrequency: string
+  priorChargesCents: number
   plan: { priceCents: number; billingFrequency: string; includedPrivateLessons: number; _count: { studentMemberships: number } }
   payments: { amountCents: number }[]
   usageAdjustments: { delta: number; createdAt: Date }[]
@@ -42,16 +51,20 @@ type MembershipForSerialize = {
 
 async function serializeStudentMembership<T extends MembershipForSerialize>(membership: T) {
   const now = new Date()
-  const { periodStart, periodEnd } = currentPeriodBounds(membership.startDate, membership.plan.billingFrequency, now)
+  // Deliberately the membership's own snapshotted cadence and price, not
+  // membership.plan.* — see the schema comment on billedPriceCents. Reading the
+  // plan here is what made a plan edit re-bill every past period.
+  const { periodStart, periodEnd } = currentPeriodBounds(membership.startDate, membership.billingFrequency, now)
 
-  const effectivePriceCents = membership.priceOverrideCents ?? membership.plan.priceCents
+  const effectivePriceCents = membership.priceOverrideCents ?? membership.billedPriceCents
   const totalPaidCents = membership.payments.reduce((sum, p) => sum + p.amountCents, 0)
   const { owedCents, nextDueDate } = computeMembershipBalance(
     membership.startDate,
-    membership.plan.billingFrequency,
+    membership.billingFrequency,
     now,
     effectivePriceCents,
     totalPaidCents,
+    membership.priorChargesCents,
   )
 
   const status = computeMembershipStatus(nextDueDate, now)
@@ -191,11 +204,16 @@ export async function assignMembership(
     if (existing) {
       throw new Error('This student already has an active membership. Change their plan instead of assigning a new one.')
     }
+    const plan = await tx.membershipPlan.findUniqueOrThrow({ where: { id: input.planId } })
     return tx.studentMembership.create({
       data: {
         studentId,
         planId: input.planId,
         priceOverrideCents: input.priceOverrideCents,
+        // Snapshot the plan's terms as they are right now — later edits to the
+        // plan apply to new sign-ups only.
+        billedPriceCents: plan.priceCents,
+        billingFrequency: plan.billingFrequency,
         startDate: new Date(input.startDate),
       },
       include: studentMembershipInclude,
@@ -207,15 +225,34 @@ export async function assignMembership(
 export async function updateMembership(id: string, input: { planId?: string; priceOverrideCents?: number | null }) {
   const data: Prisma.StudentMembershipUpdateInput = { ...input }
   if (input.planId) {
-    const current = await prisma.studentMembership.findUniqueOrThrow({ where: { id }, include: { plan: true } })
+    const current = await prisma.studentMembership.findUniqueOrThrow({ where: { id }, include: { payments: true } })
     if (input.planId !== current.planId) {
       const newPlan = await prisma.membershipPlan.findUniqueOrThrow({ where: { id: input.planId } })
-      // A different billing cadence starting mid-cycle would otherwise
-      // keep walking periods forward from the old plan's stale anchor
-      // date — restart the clock from today instead so the new cadence
-      // counts from the point the switch actually happened.
-      if (newPlan.billingFrequency !== current.plan.billingFrequency) {
-        data.startDate = new Date()
+      // Moving to a different plan re-snapshots its terms onto the membership,
+      // so from here on this student bills at the new plan's price and cadence.
+      data.billedPriceCents = newPlan.priceCents
+      data.billingFrequency = newPlan.billingFrequency
+
+      // A different billing cadence starting mid-cycle would otherwise keep
+      // walking periods forward from the old plan's stale anchor date — restart
+      // the clock from today instead so the new cadence counts from the point
+      // the switch actually happened.
+      if (newPlan.billingFrequency !== current.billingFrequency) {
+        const now = new Date()
+        // Resetting the anchor closes out the old term, so bank what it
+        // charged. Without this, every period before the switch stops being
+        // owed and the payments made against them are re-read as credit
+        // against the new plan's price — a student who had paid $700 on a
+        // $100/month plan and moved to $50/week came out ~14 weeks prepaid.
+        data.priorChargesCents =
+          current.priorChargesCents +
+          chargesForTerm(
+            current.startDate,
+            current.billingFrequency,
+            now,
+            current.priceOverrideCents ?? current.billedPriceCents,
+          )
+        data.startDate = now
       }
     }
   }
