@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import type { MembershipPayment, MembershipPaymentWithPlan, MembershipPlan, Student, StudentMembership } from '../../shared/types'
+import type { MembershipPayment, MembershipPaymentWithPlan, MembershipPlan, PaymentMethod, Student, StudentMembership } from '../../shared/types'
+import { PAYMENT_METHODS } from '../../shared/types'
 import {
   FREQUENCY_LABEL,
   MEMBERSHIP_STATUS_COLOR,
   MEMBERSHIP_STATUS_LABEL,
+  PAYMENT_METHOD_LABEL,
   dollarsToCents,
   formatCents,
 } from '@/lib/membershipFormat'
@@ -39,7 +41,7 @@ import {
 } from '@/components/ui/table'
 
 const EMPTY_ASSIGN_FORM = { planId: '', priceOverride: '', startDate: todayIso() }
-const EMPTY_PAYMENT_FORM = { amount: '', paidOn: todayIso(), method: '', notes: '' }
+const EMPTY_PAYMENT_FORM = { amount: '', paidOn: todayIso(), method: '' as PaymentMethod | '', notes: '' }
 const EMPTY_ADJUSTMENT_FORM = { delta: '1', reason: '' }
 
 export function StudentMembershipDialog({
@@ -166,7 +168,7 @@ export function StudentMembershipDialog({
     try {
       await api.studentMemberships.recordPayment(membership.id, {
         amountCents: dollarsToCents(paymentForm.amount),
-        method: paymentForm.method.trim() || null,
+        method: paymentForm.method || null,
         paidOn: isoDateToInstant(paymentForm.paidOn),
         notes: paymentForm.notes.trim() || null,
       })
@@ -358,12 +360,19 @@ export function StudentMembershipDialog({
                       value={paymentForm.paidOn}
                       onChange={(e) => setPaymentForm((f) => ({ ...f, paidOn: e.target.value }))}
                     />
-                    <Input
-                      className="w-36"
-                      placeholder="Method (optional)"
+                    <Select
                       value={paymentForm.method}
-                      onChange={(e) => setPaymentForm((f) => ({ ...f, method: e.target.value }))}
-                    />
+                      onValueChange={(v) => setPaymentForm((f) => ({ ...f, method: v as PaymentMethod }))}
+                    >
+                      <SelectTrigger className="w-36">
+                        <SelectValue placeholder="Method (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAYMENT_METHODS.map((m) => (
+                          <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Input
                       className="w-48"
                       placeholder="Notes (optional)"

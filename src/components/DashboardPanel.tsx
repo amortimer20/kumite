@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, DollarSign, Users } from 'lucide-react'
+import { CalendarDays, DollarSign, UserPlus, Users } from 'lucide-react'
 import { api } from '../api'
 import type { Instructor, Lesson, Student, StudentMembershipWithStudent } from '../../shared/types'
 import { StudentMembershipDialog } from './StudentMembershipDialog'
@@ -171,7 +171,12 @@ export function DashboardPanel() {
                       <div key={lesson.id} className="flex items-center justify-between gap-2 text-sm">
                         <span className="inline-flex min-w-0 items-center gap-1.5 truncate">
                           {lesson.type === 'group' && <Users className="size-3.5 shrink-0 text-muted-foreground" aria-label="Group class" />}
-                          {lesson.type === 'group' ? lesson.title : `${lesson.student?.firstName} ${lesson.student?.lastName}`}
+                          {lesson.type === 'intro' && <UserPlus className="size-3.5 shrink-0 text-muted-foreground" aria-label="Intro lesson" />}
+                          {lesson.type === 'group'
+                            ? lesson.title
+                            : lesson.type === 'intro'
+                              ? lesson.prospectName
+                              : `${lesson.student?.firstName} ${lesson.student?.lastName}`}
                         </span>
                         <span className="shrink-0 text-xs text-muted-foreground">
                           {formatTime(lesson.startTime)} · {STATUS_LABEL[lesson.status]}

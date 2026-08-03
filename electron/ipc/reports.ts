@@ -1,31 +1,31 @@
 import { ipcMain, dialog } from 'electron'
 import fs from 'node:fs'
 import { prisma } from '../db.ts'
-import { REPORT_PAYMENT_METHODS } from '../../shared/types.ts'
+import { PAYMENT_METHODS } from '../../shared/types.ts'
 import type {
+  PaymentMethod,
   Report,
   ReportDateRangeInput,
   ReportExportInput,
   ReportMethodBreakdown,
-  ReportPaymentMethod,
   ReportSourceBreakdown,
 } from '../../shared/types.ts'
 
 // MembershipPayment.method is freeform text (no enum, unlike
-// PosSale.paymentMethod which is already constrained to
-// REPORT_PAYMENT_METHODS) — normalize case-insensitively; anything
-// unrecognized (including null/empty) buckets into "other".
-function normalizeMethod(method: string | null): ReportPaymentMethod {
+// PosSale.paymentMethod which is already constrained to PAYMENT_METHODS) —
+// normalize case-insensitively; anything unrecognized (including
+// null/empty) buckets into "other".
+function normalizeMethod(method: string | null): PaymentMethod {
   const m = method?.trim().toLowerCase()
   if (m === 'cash' || m === 'card' || m === 'check') return m
   return 'other'
 }
 
 function emptyByMethod(): ReportMethodBreakdown[] {
-  return REPORT_PAYMENT_METHODS.map((method) => ({ method, totalCents: 0 }))
+  return PAYMENT_METHODS.map((method) => ({ method, totalCents: 0 }))
 }
 
-function addToBucket(byMethod: ReportMethodBreakdown[], method: ReportPaymentMethod, cents: number) {
+function addToBucket(byMethod: ReportMethodBreakdown[], method: PaymentMethod, cents: number) {
   byMethod.find((b) => b.method === method)!.totalCents += cents
 }
 
@@ -96,7 +96,7 @@ function buildCsv(report: Report, includeMembership: boolean, includePos: boolea
 
   rows.push(['By Payment Method'])
   rows.push(['Method', 'Total'])
-  for (const method of REPORT_PAYMENT_METHODS) {
+  for (const method of PAYMENT_METHODS) {
     let cents = 0
     if (includeMembership) cents += report.membership.byMethod.find((b) => b.method === method)!.totalCents
     if (includePos) cents += report.pos.byMethod.find((b) => b.method === method)!.totalCents

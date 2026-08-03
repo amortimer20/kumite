@@ -30,6 +30,32 @@ Publisher" SmartScreen warning — not a blocker, just rougher first impression)
 
 ## Done
 
+### Intro lesson type (free trial for prospects)
+Scheduling a free introductory lesson no longer requires creating a full `Student` profile first.
+A new `Lesson.type` value, `"intro"`, needs only a prospect's name (and optionally a phone number for
+follow-up), stored as plain columns directly on the `Lesson` row — no `Student` record is created,
+mirroring how `PosSale.studentName` is already a plain-text snapshot with no foreign key. If the
+prospect signs up afterward, front desk staff just add them as a normal student the usual way; there's
+no "conversion" step by design. The Schedule form's type dropdown now has a third "Intro" option that
+swaps the student picker for a prospect-name + phone input, and the schedule table / Dashboard's
+Today's Schedule both show a distinct icon (`UserPlus`) alongside the prospect's name. Intro lessons
+are deliberately one-off only — the "Repeats weekly" recurring option is hidden for them, and
+`RecurringSeriesInput.type` was narrowed to a new `RecurringLessonType` (private/group only) so the
+renderer can't even construct a recurring intro series at the type level, no runtime guard needed.
+
+### Membership button visibility + shared payment method dropdown
+The Students panel's "Membership" action moved from the overflow (⋯) menu back onto the row as a
+visible button next to "Details" — it's opened often enough that hiding it a click deeper wasn't
+worth the tidiness. Separately, the membership payment form's freeform "Method" text input now
+matches POS's cash/card/check/other dropdown, since a fast picker beats retyping the same handful of
+words at the front desk. This was also the natural point to stop duplicating that 4-value set three
+different ways (`POS_PAYMENT_METHODS`, and a copy-pasted `REPORT_PAYMENT_METHODS` in the Reports
+feature) — it's now one shared `PAYMENT_METHODS`/`PaymentMethod` in `shared/types.ts` and one
+`PAYMENT_METHOD_LABEL` map in `src/lib/membershipFormat.ts`, used by POS, Reports, and the membership
+form alike. `MembershipPayment.method` stays a freeform `String?` column in the database — this is a
+write-path UI/type constraint only, so old freeform historical values (and Reports' existing
+normalization of unrecognized strings into "Other") are unaffected.
+
 ### Financial Reports
 Added a "Reports" tab for combined revenue reporting across the two existing revenue sources —
 membership dues (`MembershipPayment`) and POS sales (`PosSale`) — over a user-picked date range.

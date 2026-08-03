@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Repeat, Trash2, Users } from 'lucide-react'
+import { Repeat, Trash2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import type { BusinessHours, Instructor, Lesson, LessonStatus, LessonType, Student } from '../../shared/types'
@@ -106,6 +106,8 @@ export function SchedulePanel() {
   const [lessonType, setLessonType] = useState<LessonType>('private')
   const [studentId, setStudentId] = useState('')
   const [groupTitle, setGroupTitle] = useState('')
+  const [prospectName, setProspectName] = useState('')
+  const [prospectPhone, setProspectPhone] = useState('')
   const [instructorId, setInstructorId] = useState('')
   const [startTime, setStartTime] = useState('15:00')
   const [endTime, setEndTime] = useState('15:30')
@@ -181,12 +183,22 @@ export function SchedulePanel() {
       setError('Enter a class name.')
       return
     }
+    if (lessonType === 'intro' && !prospectName.trim()) {
+      setError("Enter the prospect's name.")
+      return
+    }
     const typeFields =
       lessonType === 'private'
         ? { type: lessonType, studentId }
-        : { type: lessonType, title: groupTitle.trim() }
+        : lessonType === 'group'
+          ? { type: lessonType, title: groupTitle.trim() }
+          : { type: lessonType, prospectName: prospectName.trim(), prospectPhone: prospectPhone.trim() || null }
     try {
-      if (repeatsWeekly) {
+      // typeFields.type !== 'intro' narrows typeFields to the
+      // private/group union, matching RecurringLessonType — an intro
+      // booking can never go down the recurring-series path, even if
+      // repeatsWeekly were somehow still true from a prior selection.
+      if (repeatsWeekly && typeFields.type !== 'intro') {
         await api.recurringSeries.create({
           ...typeFields,
           instructorId,
@@ -204,14 +216,23 @@ export function SchedulePanel() {
           notes: notes.trim() || null,
         })
       }
-      toast.success(repeatsWeekly ? 'Weekly series scheduled.' : 'Lesson scheduled.')
+      toast.success(repeatsWeekly && typeFields.type !== 'intro' ? 'Weekly series scheduled.' : 'Lesson scheduled.')
       setNotes('')
       setGroupTitle('')
+      setProspectName('')
+      setProspectPhone('')
       setRepeatsWeekly(false)
       await refreshLessons()
     } catch (err) {
       toast.error(getErrorMessage(err))
     }
+  }
+
+  function handleLessonTypeChange(v: LessonType) {
+    setLessonType(v)
+    // A stale checked "Repeats weekly" box from a prior private/group
+    // selection should never carry over to an intro booking.
+    if (v === 'intro') setRepeatsWeekly(false)
   }
 
   async function handleStatus(id: string, status: LessonStatus) {
@@ -293,13 +314,14 @@ export function SchedulePanel() {
         <div className="min-w-0 flex-1">
           <form className="mb-4 rounded-lg border border-border bg-card p-3" onSubmit={handleSchedule}>
             <div className="flex flex-wrap items-center gap-2">
-              <Select value={lessonType} onValueChange={(v) => setLessonType(v as LessonType)}>
+              <Select value={lessonType} onValueChange={(v) => handleLessonTypeChange(v as LessonType)}>
                 <SelectTrigger className="w-28">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="private">Private</SelectItem>
                   <SelectItem value="group">Group</SelectItem>
+                  <SelectItem value="intro">Intro</SelectItem>
                 </SelectContent>
               </Select>
               {lessonType === 'private' ? (
@@ -313,22 +335,39 @@ export function SchedulePanel() {
                     ))}
                   </SelectContent>
                 </Select>
-              ) : (
+              ) : lessonType === 'group' ? (
                 <Input
                   className="w-40"
                   placeholder="Class name (e.g. Cardio)"
                   value={groupTitle}
                   onChange={(e) => setGroupTitle(e.target.value)}
                 />
+              ) : (
+                <>
+                  <Input
+                    className="w-36"
+                    placeholder="Prospect name"
+                    value={prospectName}
+                    onChange={(e) => setProspectName(e.target.value)}
+                  />
+                  <Input
+                    className="w-32"
+                    placeholder="Phone (optional)"
+                    value={prospectPhone}
+                    onChange={(e) => setProspectPhone(e.target.value)}
+                  />
+                </>
               )}
               <Input type="time" className="w-auto" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
               <span className="text-muted-foreground">to</span>
               <Input type="time" className="w-auto" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
               <Input className="w-48" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-              <label className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Checkbox checked={repeatsWeekly} onCheckedChange={(checked) => setRepeatsWeekly(checked === true)} />
-                Repeats weekly
-              </label>
+              {lessonType !== 'intro' && (
+                <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Checkbox checked={repeatsWeekly} onCheckedChange={(checked) => setRepeatsWeekly(checked === true)} />
+                  Repeats weekly
+                </label>
+              )}
               <Button type="submit">Schedule Lesson</Button>
             </div>
           </form>
@@ -376,6 +415,14 @@ export function SchedulePanel() {
                               <>
                                 <Users className="size-3.5 shrink-0 text-muted-foreground" aria-label="Group class" />
                                 {row.lesson.title}
+                              </>
+                            ) : row.lesson.type === 'intro' ? (
+                              <>
+                                <UserPlus className="size-3.5 shrink-0 text-muted-foreground" aria-label="Intro lesson" />
+                                {row.lesson.prospectName}
+                                {row.lesson.prospectPhone && (
+                                  <span className="text-xs text-muted-foreground">({row.lesson.prospectPhone})</span>
+                                )}
                               </>
                             ) : (
                               <>{row.lesson.student?.firstName} {row.lesson.student?.lastName}</>

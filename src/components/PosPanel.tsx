@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { Minus, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import type { PosItem, PosPaymentMethod, PosSale, Student } from '../../shared/types'
-import { POS_PAYMENT_METHODS } from '../../shared/types'
-import { formatCents, dollarsToCents } from '@/lib/membershipFormat'
+import type { PaymentMethod, PosItem, PosSale, Student } from '../../shared/types'
+import { PAYMENT_METHODS } from '../../shared/types'
+import { PAYMENT_METHOD_LABEL, formatCents, dollarsToCents } from '@/lib/membershipFormat'
 import { getErrorMessage } from '@/lib/errors'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { TableSkeletonRows } from './TableSkeletonRows'
@@ -46,13 +46,6 @@ import {
 // string as an item value, and a sale never requires a student.
 const WALK_IN = '__walk_in__'
 
-const PAYMENT_METHOD_LABEL: Record<PosPaymentMethod, string> = {
-  cash: 'Cash',
-  card: 'Card',
-  check: 'Check',
-  other: 'Other',
-}
-
 type CartLine = { item: PosItem; quantity: number }
 
 const EMPTY_ITEM_FORM = { name: '', price: '' }
@@ -71,7 +64,7 @@ export function PosPanel() {
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
   const [selectedStudentId, setSelectedStudentId] = useState(WALK_IN)
-  const [paymentMethod, setPaymentMethod] = useState<PosPaymentMethod | ''>('')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('')
   const [notes, setNotes] = useState('')
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
   // Guards against a fast double-click completing the same sale twice.
@@ -302,12 +295,12 @@ export function PosPanel() {
             </div>
             <div>
               <Label className="mb-1">Payment method</Label>
-              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PosPaymentMethod)}>
+              <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select payment method" />
                 </SelectTrigger>
                 <SelectContent>
-                  {POS_PAYMENT_METHODS.map((m) => (
+                  {PAYMENT_METHODS.map((m) => (
                     <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</SelectItem>
                   ))}
                 </SelectContent>
@@ -355,7 +348,7 @@ export function PosPanel() {
                     <TableCell className="truncate">{summarizeItems(sale)}</TableCell>
                     <TableCell>{formatCents(sale.totalCents)}</TableCell>
                     <TableCell className="truncate">
-                      {sale.paymentMethod ? PAYMENT_METHOD_LABEL[sale.paymentMethod as PosPaymentMethod] ?? sale.paymentMethod : '—'}
+                      {sale.paymentMethod ? PAYMENT_METHOD_LABEL[sale.paymentMethod as PaymentMethod] ?? sale.paymentMethod : '—'}
                     </TableCell>
                     <TableCell>
                       <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteSale(sale)}>

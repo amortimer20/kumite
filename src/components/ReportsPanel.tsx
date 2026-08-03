@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import type { Report, ReportPaymentMethod, ReportSourceBreakdown } from '../../shared/types'
-import { REPORT_PAYMENT_METHODS } from '../../shared/types'
+import type { Report, ReportSourceBreakdown } from '../../shared/types'
+import { PAYMENT_METHODS } from '../../shared/types'
 import {
   endOfLastMonthIso,
   endOfMonthIso,
@@ -12,7 +12,7 @@ import {
   startOfMonthIso,
   startOfYearIso,
 } from '@/lib/isoDate'
-import { formatCents } from '@/lib/membershipFormat'
+import { PAYMENT_METHOD_LABEL, formatCents } from '@/lib/membershipFormat'
 import { getErrorMessage } from '@/lib/errors'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { Button } from '@/components/ui/button'
@@ -28,16 +28,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-const PAYMENT_METHOD_LABEL: Record<ReportPaymentMethod, string> = {
-  cash: 'Cash',
-  card: 'Card',
-  check: 'Check',
-  other: 'Other',
-}
-
 function sumBreakdowns(sources: ReportSourceBreakdown[]) {
   const combinedCents = sources.reduce((sum, s) => sum + s.totalCents, 0)
-  const byMethod = REPORT_PAYMENT_METHODS.map((method) => ({
+  const byMethod = PAYMENT_METHODS.map((method) => ({
     method,
     totalCents: sources.reduce((sum, s) => sum + s.byMethod.find((b) => b.method === method)!.totalCents, 0),
   }))

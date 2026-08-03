@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, CreditCard, MoreHorizontal, Pencil, Repeat, RotateCcw, Trash2 } from 'lucide-react'
+import { CalendarDays, MoreHorizontal, Pencil, Repeat, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
@@ -364,6 +364,7 @@ export function StudentsPanel() {
                   <TableCell>{s.rank ?? '—'}</TableCell>
                   <TableCell className="flex justify-end gap-2">
                     <Button variant="outline" size="sm" onClick={() => setDetailsStudent(s)}>Details</Button>
+                    <Button variant="outline" size="sm" onClick={() => setMembershipStudent(s)}>Membership</Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="outline" size="sm">
@@ -372,9 +373,6 @@ export function StudentsPanel() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => setMembershipStudent(s)}>
-                          <CreditCard />Membership
-                        </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => openLessons(s)}>
                           <CalendarDays />Lessons
                         </DropdownMenuItem>

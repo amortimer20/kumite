@@ -1,8 +1,14 @@
 export type LessonStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
 
 // "private" is scheduled against a specific student; "group" is just a block
-// on an instructor's schedule with no per-student roster.
-export type LessonType = 'private' | 'group'
+// on an instructor's schedule with no per-student roster; "intro" is a
+// one-off free trial for a prospect who isn't a Student yet.
+export type LessonType = 'private' | 'group' | 'intro'
+
+// Recurring series are private/group only — a trial lesson has no reason to
+// repeat weekly. Narrower than LessonType so the renderer can't even
+// construct a recurring "intro" series.
+export type RecurringLessonType = 'private' | 'group'
 
 export const STUDENT_RANKS = [
   'White',
@@ -121,8 +127,12 @@ export interface Lesson {
   studentId: string | null
   instructorId: string
   type: LessonType
-  // Group class name (e.g. "Cardio"); null for private lessons.
+  // Group class name (e.g. "Cardio"); null for private/intro lessons.
   title: string | null
+  // Only set when type is "intro" — the prospect's name and (optionally) a
+  // phone number for following up, not a Student relation.
+  prospectName: string | null
+  prospectPhone: string | null
   startTime: string
   endTime: string
   status: LessonStatus
@@ -134,12 +144,16 @@ export interface Lesson {
   instructor: Instructor
 }
 
-// "private" requires studentId (and no title); "group" requires title (and
-// no studentId) — enforced in application code, same as LessonStatus.
+// "private" requires studentId (and no title/prospect fields); "group"
+// requires title (and no studentId/prospect fields); "intro" requires
+// prospectName (and no studentId/title) — enforced in application code,
+// same as LessonStatus.
 export interface LessonInput {
   type?: LessonType
   studentId?: string | null
   title?: string | null
+  prospectName?: string | null
+  prospectPhone?: string | null
   instructorId: string
   startTime: string
   endTime: string
@@ -208,7 +222,7 @@ export interface CertificateInput {
 }
 
 export interface RecurringSeriesInput {
-  type?: LessonType
+  type?: RecurringLessonType
   studentId?: string | null
   title?: string | null
   instructorId: string
@@ -261,7 +275,7 @@ export interface MembershipPayment {
 
 export interface MembershipPaymentInput {
   amountCents: number
-  method?: string | null
+  method?: PaymentMethod | null
   paidOn: string
   notes?: string | null
 }
@@ -330,9 +344,11 @@ export interface StudentMembershipWithStudent extends StudentMembership {
   student: Student
 }
 
-export const POS_PAYMENT_METHODS = ['cash', 'card', 'check', 'other'] as const
+// Shared between POS sales, membership payments, and financial reports —
+// not domain-specific to any one of them.
+export const PAYMENT_METHODS = ['cash', 'card', 'check', 'other'] as const
 
-export type PosPaymentMethod = (typeof POS_PAYMENT_METHODS)[number]
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
 // A front-desk catalog item (merchandise, drop-in fees, etc.) — price only,
 // no stock/inventory tracking.
@@ -377,7 +393,7 @@ export interface PosSaleInput {
   // Plain-text snapshot only — no studentId, intentionally no relation to
   // Student. Optional: a sale doesn't require a student to be selected.
   studentName?: string | null
-  paymentMethod?: PosPaymentMethod | null
+  paymentMethod?: PaymentMethod | null
   notes?: string | null
   items: PosSaleItemInput[]
 }
@@ -392,13 +408,11 @@ export interface PosSale {
   items: PosSaleItem[]
 }
 
+// Report payment-method buckets reuse PAYMENT_METHODS/PaymentMethod above.
 // Cash/card/check come from PosSale.paymentMethod directly (already
-// constrained to POS_PAYMENT_METHODS) and from a case-insensitive match on
-// MembershipPayment.method (freeform text, no enum). Anything else —
-// including null/unrecognized — buckets into "other".
-export const REPORT_PAYMENT_METHODS = ['cash', 'card', 'check', 'other'] as const
-
-export type ReportPaymentMethod = (typeof REPORT_PAYMENT_METHODS)[number]
+// constrained) and from a case-insensitive match on MembershipPayment.method
+// (freeform text, no enum). Anything else — including null/unrecognized —
+// buckets into "other".
 
 export interface ReportDateRangeInput {
   // Plain "yyyy-mm-dd", same convention as MembershipPaymentInput.paidOn.
@@ -407,15 +421,15 @@ export interface ReportDateRangeInput {
 }
 
 export interface ReportMethodBreakdown {
-  method: ReportPaymentMethod
+  method: PaymentMethod
   totalCents: number
 }
 
 export interface ReportSourceBreakdown {
   totalCents: number
   count: number
-  // Always all 4 REPORT_PAYMENT_METHODS entries (zero-filled), not sparse —
-  // lets the UI render a stable table without filling in zeros itself.
+  // Always all 4 PAYMENT_METHODS entries (zero-filled), not sparse — lets
+  // the UI render a stable table without filling in zeros itself.
   byMethod: ReportMethodBreakdown[]
 }
 

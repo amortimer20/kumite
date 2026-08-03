@@ -306,6 +306,18 @@ async function main() {
     },
   })
 
+  // --- Intro lesson: a free trial for a prospect, no Student record ---
+  await prisma.lesson.create({
+    data: {
+      instructorId: casey.id,
+      type: 'intro',
+      prospectName: 'Priya Kapoor',
+      prospectPhone: '555-0142',
+      startTime: daysFromNowAt(1, 15, 30),
+      endTime: daysFromNowAt(1, 16),
+    },
+  })
+
   // --- POS catalog (front-desk merchandise) ---
   const posItems = await Promise.all([
     prisma.posItem.create({ data: { name: 'Gloves', priceCents: 2500 } }),

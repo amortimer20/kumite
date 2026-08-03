@@ -138,15 +138,24 @@ model Lesson {
   // Group lessons have no assigned student — group classes have no
   // per-student roster in this app, they're just a block on an instructor's
   // schedule. Enforced in application code: "private" requires studentId
-  // (and no title); "group" requires title (and no studentId).
+  // (and no title/prospect fields); "group" requires title (and no
+  // studentId/prospect fields); "intro" requires prospectName (and no
+  // studentId/title) — a free trial lesson for someone who isn't a Student
+  // yet. No Student record is created for an intro booking; if they sign up
+  // afterward, they're added as a normal student the usual way, same as
+  // PosSale.studentName being a plain snapshot with no relation.
   student           Student?         @relation(fields: [studentId], references: [id])
   studentId         String?
   instructor        Instructor       @relation(fields: [instructorId], references: [id])
   instructorId      String
-  // "private" | "group"
+  // "private" | "group" | "intro"
   type              String           @default("private")
-  // Group class name (e.g. "Cardio", "Shootfighting"); null for private lessons.
+  // Group class name (e.g. "Cardio", "Shootfighting"); null for private/intro lessons.
   title             String?
+  // Only set when type is "intro" — the prospect's name and (optionally) a
+  // phone number for following up, not a Student relation.
+  prospectName      String?
+  prospectPhone     String?
   startTime         DateTime
   endTime           DateTime
   status            String           @default("scheduled")

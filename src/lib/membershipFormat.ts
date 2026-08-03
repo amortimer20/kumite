@@ -1,9 +1,18 @@
-import type { MembershipBillingFrequency, MembershipStatus } from '../../shared/types'
+import type { MembershipBillingFrequency, MembershipStatus, PaymentMethod } from '../../shared/types'
 
 export const FREQUENCY_LABEL: Record<MembershipBillingFrequency, string> = {
   weekly: 'Weekly',
   biweekly: 'Every 2 weeks',
   monthly: 'Monthly',
+}
+
+// Shared between the POS checkout, membership payment form, and financial
+// reports — one label map instead of a copy in each.
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  check: 'Check',
+  other: 'Other',
 }
 
 export const MEMBERSHIP_STATUS_LABEL: Record<MembershipStatus, string> = {

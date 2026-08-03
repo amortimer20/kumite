@@ -5,17 +5,24 @@ import type { LessonInput, LessonListFilter, LessonStatus } from '../../shared/t
 const include = { student: true, instructor: true } as const
 
 // "private" requires a student (and no title); "group" requires a title
-// (and no student) — SQLite has no enum support, so this is enforced here
-// rather than at the schema level, same as LessonStatus.
+// (and no student); "intro" requires a prospect name — SQLite has no enum
+// support, so this is enforced here rather than at the schema level, same
+// as LessonStatus. prospectName is optional here (rather than required)
+// so recurringSeries.ts's existing call sites don't need to pass it — a
+// recurring series can never be type "intro" (RecurringSeriesInput.type
+// excludes it), so this branch is never reached from that caller.
 export function assertValidLessonInput(
   type: string,
   studentId: string | null | undefined,
   title: string | null | undefined,
+  prospectName?: string | null,
 ) {
   if (type === 'private') {
     if (!studentId) throw new Error('A private lesson needs a student.')
   } else if (type === 'group') {
     if (!title) throw new Error('A group lesson needs a title.')
+  } else if (type === 'intro') {
+    if (!prospectName) throw new Error('An intro lesson needs a prospect name.')
   } else {
     throw new Error(`Unknown lesson type: ${type}`)
   }
@@ -62,7 +69,7 @@ export function registerLessonHandlers() {
       throw new Error('Lesson end time must be after the start time.')
     }
     const type = input.type ?? 'private'
-    assertValidLessonInput(type, input.studentId, input.title)
+    assertValidLessonInput(type, input.studentId, input.title, input.prospectName)
     await assertNoOverlap(input.instructorId, startTime, endTime)
     return prisma.lesson.create({
       data: {
@@ -70,6 +77,8 @@ export function registerLessonHandlers() {
         instructorId: input.instructorId,
         type,
         title: type === 'group' ? input.title : null,
+        prospectName: type === 'intro' ? input.prospectName : null,
+        prospectPhone: type === 'intro' ? input.prospectPhone : null,
         startTime,
         endTime,
         notes: input.notes,
@@ -86,10 +95,12 @@ export function registerLessonHandlers() {
     const type = input.type ?? existing.type
     const studentId = 'studentId' in input ? input.studentId : existing.studentId
     const title = 'title' in input ? input.title : existing.title
+    const prospectName = 'prospectName' in input ? input.prospectName : existing.prospectName
+    const prospectPhone = 'prospectPhone' in input ? input.prospectPhone : existing.prospectPhone
     if (endTime <= startTime) {
       throw new Error('Lesson end time must be after the start time.')
     }
-    assertValidLessonInput(type, studentId, title)
+    assertValidLessonInput(type, studentId, title, prospectName)
     await assertNoOverlap(instructorId, startTime, endTime, id)
     return prisma.lesson.update({
       where: { id },
@@ -98,6 +109,8 @@ export function registerLessonHandlers() {
         instructorId,
         type,
         title: type === 'group' ? title : null,
+        prospectName: type === 'intro' ? prospectName : null,
+        prospectPhone: type === 'intro' ? prospectPhone : null,
         startTime,
         endTime,
         notes: input.notes,
