@@ -115,6 +115,10 @@ export function StudentsPanel() {
   // Radix Select doesn't reset its displayed label when value goes back to
   // undefined, so force a remount after each successful add to clear it.
   const [addFormKey, setAddFormKey] = useState(0)
+  // Without this, a double-clicked submit creates the record twice — there is no
+  // uniqueness constraint on students or family members.
+  const [addingStudent, setAddingStudent] = useState(false)
+  const [addingFamilyMember, setAddingFamilyMember] = useState(false)
 
   const [editingStudent, setEditingStudent] = useState<Student | null>(null)
   const [editForm, setEditForm] = useState<StudentInput>(EMPTY_FORM)
@@ -164,6 +168,7 @@ export function StudentsPanel() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+    if (addingStudent) return
     setError(null)
     if (!addForm.firstName.trim() || !addForm.lastName.trim()) {
       setError('First and last name are required.')
@@ -173,6 +178,7 @@ export function StudentsPanel() {
       setError('You must agree to the Release and Indemnity Agreement to add a student.')
       return
     }
+    setAddingStudent(true)
     try {
       await api.students.create({ ...normalize(addForm), agreedToWaiver })
       toast.success(`${addForm.firstName.trim()} ${addForm.lastName.trim()} added.`)
@@ -180,6 +186,8 @@ export function StudentsPanel() {
       await refresh()
     } catch (err) {
       toast.error(getErrorMessage(err))
+    } finally {
+      setAddingStudent(false)
     }
   }
 
@@ -273,12 +281,13 @@ export function StudentsPanel() {
 
   async function handleAddFamilyMember(e: React.FormEvent) {
     e.preventDefault()
-    if (!editingStudent) return
+    if (!editingStudent || addingFamilyMember) return
     setFamilyError(null)
     if (!familyForm.firstName.trim() || !familyForm.lastName.trim()) {
       setFamilyError('First and last name are required.')
       return
     }
+    setAddingFamilyMember(true)
     try {
       await api.familyMembers.create(editingStudent.id, {
         firstName: familyForm.firstName.trim(),
@@ -291,6 +300,8 @@ export function StudentsPanel() {
       await refresh()
     } catch (err) {
       toast.error(getErrorMessage(err))
+    } finally {
+      setAddingFamilyMember(false)
     }
   }
 
@@ -551,7 +562,7 @@ export function StudentsPanel() {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
-              <Button type="submit">Add Student</Button>
+              <Button type="submit" disabled={addingStudent}>Add Student</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -801,7 +812,7 @@ export function StudentsPanel() {
                   ))}
                 </SelectContent>
               </Select>
-              <Button type="submit" variant="outline" size="sm">Add</Button>
+              <Button type="submit" variant="outline" size="sm" disabled={addingFamilyMember}>Add</Button>
             </form>
             {familyError && <p className="mt-1 text-sm text-destructive">{familyError}</p>}
           </div>

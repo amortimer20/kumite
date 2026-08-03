@@ -53,6 +53,10 @@ export function ReportsPanel() {
   const [startDate, setStartDate] = useState(startOfMonthIso())
   const [endDate, setEndDate] = useState(endOfMonthIso())
   const [report, setReport] = useState<Report | null>(null)
+  // The range `report` was actually generated for. The date inputs can be
+  // edited without regenerating, so exporting off them would save a file whose
+  // totals disagree with the numbers on screen.
+  const [reportRange, setReportRange] = useState<{ startDate: string; endDate: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const showLoading = useDelayedFlag(loading)
   const [exporting, setExporting] = useState(false)
@@ -71,6 +75,7 @@ export function ReportsPanel() {
     try {
       const result = await api.reports.generate({ startDate: rangeStart, endDate: rangeEnd })
       setReport(result)
+      setReportRange({ startDate: rangeStart, endDate: rangeEnd })
     } catch (err) {
       toast.error(getErrorMessage(err))
     } finally {
@@ -85,10 +90,12 @@ export function ReportsPanel() {
   }
 
   async function handleExportCsv() {
-    if (!report) return
+    if (!report || !reportRange) return
     setExporting(true)
     try {
-      const result = await api.reports.exportCsv({ startDate, endDate, includeMembership, includePos })
+      // Deliberately the range the on-screen report came from, not the current
+      // date inputs.
+      const result = await api.reports.exportCsv({ ...reportRange, includeMembership, includePos })
       if (!result.canceled) {
         toast.success(`Report saved to ${result.path}`)
       }

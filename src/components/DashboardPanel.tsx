@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { CalendarDays, DollarSign, UserPlus, Users } from 'lucide-react'
 import { api } from '../api'
-import type { Instructor, Lesson, Student, StudentMembershipWithStudent } from '../../shared/types'
+import type { Instructor, Lesson, Report, Student, StudentMembershipWithStudent } from '../../shared/types'
 import { StudentMembershipDialog } from './StudentMembershipDialog'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
-import { todayIso } from '@/lib/isoDate'
+import { endOfMonthIso, startOfMonthIso, todayIso } from '@/lib/isoDate'
 import { STATUS_LABEL } from '@/lib/lessonStatus'
 import { MEMBERSHIP_STATUS_COLOR, MEMBERSHIP_STATUS_LABEL, formatCents } from '@/lib/membershipFormat'
 import { Button } from '@/components/ui/button'
@@ -89,6 +89,7 @@ export function DashboardPanel() {
   const [students, setStudents] = useState<Student[]>([])
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [memberships, setMemberships] = useState<StudentMembershipWithStudent[]>([])
+  const [monthReport, setMonthReport] = useState<Report | null>(null)
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
 
@@ -96,14 +97,20 @@ export function DashboardPanel() {
 
   async function refresh() {
     const { start, end } = todayBounds()
-    const [studentsResult, lessonsResult, membershipsResult] = await Promise.all([
+    const [studentsResult, lessonsResult, membershipsResult, reportResult] = await Promise.all([
       api.students.list(),
       api.lessons.list({ start: start.toISOString(), end: end.toISOString() }),
       api.studentMemberships.listActive(),
+      // Deliberately the same query the Reports tab runs, so the two screens
+      // can't disagree. Summing active memberships' payments here instead
+      // silently excluded POS sales entirely, and dropped a month's payments
+      // retroactively the moment a membership was cancelled or archived.
+      api.reports.generate({ startDate: startOfMonthIso(), endDate: endOfMonthIso() }),
     ])
     setStudents(studentsResult)
     setLessons(lessonsResult)
     setMemberships(membershipsResult)
+    setMonthReport(reportResult)
   }
 
   useEffect(() => {
@@ -111,14 +118,9 @@ export function DashboardPanel() {
   }, [])
 
   const activeStudentCount = students.filter((s) => s.active).length
-  const collectedThisMonthCents = memberships
-    .flatMap((m) => m.payments)
-    .filter((p) => {
-      const paidOn = new Date(p.paidOn)
-      const now = new Date()
-      return paidOn.getMonth() === now.getMonth() && paidOn.getFullYear() === now.getFullYear()
-    })
-    .reduce((sum, p) => sum + p.amountCents, 0)
+  const collectedThisMonthCents = monthReport
+    ? monthReport.membership.totalCents + monthReport.pos.totalCents
+    : 0
 
   const todayLabel = formatFullDate(todayIso())
   const instructorGroups = groupByInstructor(lessons)

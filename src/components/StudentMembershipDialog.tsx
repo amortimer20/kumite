@@ -9,8 +9,8 @@ import {
   MEMBERSHIP_STATUS_COLOR,
   MEMBERSHIP_STATUS_LABEL,
   PAYMENT_METHOD_LABEL,
-  dollarsToCents,
   formatCents,
+  parsePriceToCents,
 } from '@/lib/membershipFormat'
 import { isoDateToInstant, todayIso } from '@/lib/isoDate'
 import { getErrorMessage } from '@/lib/errors'
@@ -65,6 +65,13 @@ export function StudentMembershipDialog({
 
   const [changePlanForm, setChangePlanForm] = useState({ planId: '', priceOverride: '' })
   const [changePlanKey, setChangePlanKey] = useState(0)
+  const [changingPlan, setChangingPlan] = useState(false)
+
+  // Guards against a double-clicked submit creating two records. The backend
+  // has no dedup for payments or adjustments, so a second click while the first
+  // is in flight genuinely posts twice.
+  const [recordingPayment, setRecordingPayment] = useState(false)
+  const [addingAdjustment, setAddingAdjustment] = useState(false)
 
   const [paymentForm, setPaymentForm] = useState(EMPTY_PAYMENT_FORM)
   const [paymentError, setPaymentError] = useState<string | null>(null)
@@ -122,11 +129,23 @@ export function StudentMembershipDialog({
       setAssignError('Choose a plan.')
       return
     }
+    if (!assignForm.startDate) {
+      setAssignError('Choose a start date.')
+      return
+    }
+    // Blank legitimately means "use the plan's price". Anything typed, though,
+    // has to parse — otherwise dollarsToCents turned it into a $0.00 override,
+    // silently making the membership free.
+    const priceOverrideCents = assignForm.priceOverride.trim() ? parsePriceToCents(assignForm.priceOverride) : null
+    if (assignForm.priceOverride.trim() && priceOverrideCents === null) {
+      setAssignError('Enter a valid custom price, or leave it blank to use the plan price.')
+      return
+    }
     setAssigning(true)
     try {
       await api.studentMemberships.assign(student.id, {
         planId: assignForm.planId,
-        priceOverrideCents: assignForm.priceOverride.trim() ? dollarsToCents(assignForm.priceOverride) : null,
+        priceOverrideCents,
         startDate: isoDateToInstant(assignForm.startDate),
       })
       toast.success('Membership assigned.')
@@ -140,34 +159,46 @@ export function StudentMembershipDialog({
 
   async function handleChangePlan(e: React.FormEvent) {
     e.preventDefault()
-    if (!membership || !student) return
+    if (!membership || !student || changingPlan) return
+    const priceOverrideCents = changePlanForm.priceOverride.trim()
+      ? parsePriceToCents(changePlanForm.priceOverride)
+      : null
+    if (changePlanForm.priceOverride.trim() && priceOverrideCents === null) {
+      toast.error('Enter a valid custom price, or leave it blank to use the plan price.')
+      return
+    }
+    setChangingPlan(true)
     try {
       await api.studentMemberships.update(membership.id, {
         planId: changePlanForm.planId,
-        priceOverrideCents: changePlanForm.priceOverride.trim() ? dollarsToCents(changePlanForm.priceOverride) : null,
+        priceOverrideCents,
       })
       toast.success('Plan updated.')
       await refresh(student.id)
     } catch (err) {
       toast.error(getErrorMessage(err))
+    } finally {
+      setChangingPlan(false)
     }
   }
 
   async function handleRecordPayment(e: React.FormEvent) {
     e.preventDefault()
-    if (!membership || !student) return
+    if (!membership || !student || recordingPayment) return
     setPaymentError(null)
     if (!paymentForm.amount || !paymentForm.paidOn) {
       setPaymentError('Amount and paid-on date are required.')
       return
     }
-    if (dollarsToCents(paymentForm.amount) <= 0) {
+    const amountCents = parsePriceToCents(paymentForm.amount)
+    if (amountCents === null || amountCents <= 0) {
       setPaymentError('Amount must be greater than zero.')
       return
     }
+    setRecordingPayment(true)
     try {
       await api.studentMemberships.recordPayment(membership.id, {
-        amountCents: dollarsToCents(paymentForm.amount),
+        amountCents,
         method: paymentForm.method || null,
         paidOn: isoDateToInstant(paymentForm.paidOn),
         notes: paymentForm.notes.trim() || null,
@@ -176,6 +207,8 @@ export function StudentMembershipDialog({
       await refresh(student.id)
     } catch (err) {
       toast.error(getErrorMessage(err))
+    } finally {
+      setRecordingPayment(false)
     }
   }
 
@@ -183,20 +216,25 @@ export function StudentMembershipDialog({
     if (!student) return
     const confirmed = window.confirm(`Delete this ${formatCents(payment.amountCents)} payment? This cannot be undone.`)
     if (!confirmed) return
-    await api.studentMemberships.deletePayment(payment.id)
-    toast.success('Payment deleted.')
-    await refresh(student.id)
+    try {
+      await api.studentMemberships.deletePayment(payment.id)
+      toast.success('Payment deleted.')
+      await refresh(student.id)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   async function handleAddAdjustment(e: React.FormEvent) {
     e.preventDefault()
-    if (!membership || !student) return
+    if (!membership || !student || addingAdjustment) return
     setAdjustmentError(null)
     const delta = Number.parseInt(adjustmentForm.delta, 10)
     if (!Number.isFinite(delta) || delta === 0) {
       setAdjustmentError('Enter a non-zero number (e.g. 1 for a bonus lesson, -1 to undo one).')
       return
     }
+    setAddingAdjustment(true)
     try {
       await api.studentMemberships.addUsageAdjustment(membership.id, {
         delta,
@@ -207,6 +245,8 @@ export function StudentMembershipDialog({
       await refresh(student.id)
     } catch (err) {
       toast.error(getErrorMessage(err))
+    } finally {
+      setAddingAdjustment(false)
     }
   }
 
@@ -216,9 +256,13 @@ export function StudentMembershipDialog({
       `Cancel ${student.firstName}'s membership? They'll need to be assigned a new one to resume billing.`,
     )
     if (!confirmed) return
-    await api.studentMemberships.cancel(membership.id)
-    toast.success('Membership cancelled.')
-    await refresh(student.id)
+    try {
+      await api.studentMemberships.cancel(membership.id)
+      toast.success('Membership cancelled.')
+      await refresh(student.id)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   // The picker only lists active plans, but a student can be on one that's
@@ -338,7 +382,7 @@ export function StudentMembershipDialog({
                       onChange={(e) => setChangePlanForm((f) => ({ ...f, priceOverride: e.target.value }))}
                     />
                   </div>
-                  <Button type="submit" variant="outline">Save</Button>
+                  <Button type="submit" variant="outline" disabled={changingPlan}>Save</Button>
                 </form>
 
                 <form className="flex flex-col gap-2 border-t border-border pt-3" onSubmit={handleRecordPayment}>
@@ -379,7 +423,7 @@ export function StudentMembershipDialog({
                       value={paymentForm.notes}
                       onChange={(e) => setPaymentForm((f) => ({ ...f, notes: e.target.value }))}
                     />
-                    <Button type="submit">Record Payment</Button>
+                    <Button type="submit" disabled={recordingPayment}>Record Payment</Button>
                   </div>
                   {paymentError && <p className="text-sm text-destructive">{paymentError}</p>}
                 </form>
@@ -443,7 +487,7 @@ export function StudentMembershipDialog({
                       onChange={(e) => setAdjustmentForm((f) => ({ ...f, reason: e.target.value }))}
                     />
                   </div>
-                  <Button type="submit" variant="outline">Add</Button>
+                  <Button type="submit" variant="outline" disabled={addingAdjustment}>Add</Button>
                 </form>
                 {adjustmentError && <p className="text-sm text-destructive">{adjustmentError}</p>}
               </>

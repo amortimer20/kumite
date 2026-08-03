@@ -12,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { getErrorMessage } from '@/lib/errors'
-import { FREQUENCY_LABEL, clampNonNegativeInt, dollarsToCents, formatCents } from '@/lib/membershipFormat'
+import { FREQUENCY_LABEL, clampNonNegativeInt, formatCents, parsePriceToCents } from '@/lib/membershipFormat'
 import { Switch } from '@/components/ui/switch'
 import {
   Select,
@@ -85,6 +85,8 @@ export function SettingsPanel() {
   const [addPlanForm, setAddPlanForm] = useState(EMPTY_PLAN_FORM)
   const [addPlanFormKey, setAddPlanFormKey] = useState(0)
   const [addPlanError, setAddPlanError] = useState<string | null>(null)
+  // Without this, a double-clicked submit creates the plan twice.
+  const [addingPlan, setAddingPlan] = useState(false)
 
   const [editingPlan, setEditingPlan] = useState<MembershipPlan | null>(null)
   const [editPlanForm, setEditPlanForm] = useState(EMPTY_PLAN_FORM)
@@ -128,20 +130,25 @@ export function SettingsPanel() {
 
   async function handleAddPlan(e: React.FormEvent) {
     e.preventDefault()
+    if (addingPlan) return
     setAddPlanError(null)
     if (!addPlanForm.title.trim()) {
       setAddPlanError('Title is required.')
       return
     }
-    if (dollarsToCents(addPlanForm.price) < 0) {
-      setAddPlanError('Price cannot be negative.')
+    // A blank price must not quietly become $0.00 — see parsePriceToCents. A
+    // genuinely free plan is still allowed, it just has to be typed as 0.
+    const priceCents = parsePriceToCents(addPlanForm.price)
+    if (priceCents === null) {
+      setAddPlanError('Enter a price of 0 or more (use 0 for a free plan).')
       return
     }
+    setAddingPlan(true)
     try {
       await api.membershipPlans.create({
         title: addPlanForm.title.trim(),
         billingFrequency: addPlanForm.billingFrequency,
-        priceCents: dollarsToCents(addPlanForm.price),
+        priceCents,
         includedPrivateLessons: clampNonNegativeInt(addPlanForm.includedPrivateLessons),
       })
       toast.success(`${addPlanForm.title.trim()} added.`)
@@ -150,6 +157,8 @@ export function SettingsPanel() {
       await refreshPlans()
     } catch (err) {
       toast.error(getErrorMessage(err))
+    } finally {
+      setAddingPlan(false)
     }
   }
 
@@ -191,15 +200,16 @@ export function SettingsPanel() {
       setEditPlanError('Title is required.')
       return
     }
-    if (dollarsToCents(editPlanForm.price) < 0) {
-      setEditPlanError('Price cannot be negative.')
+    const priceCents = parsePriceToCents(editPlanForm.price)
+    if (priceCents === null) {
+      setEditPlanError('Enter a price of 0 or more (use 0 for a free plan).')
       return
     }
     try {
       await api.membershipPlans.update(editingPlan.id, {
         title: editPlanForm.title.trim(),
         billingFrequency: editPlanForm.billingFrequency,
-        priceCents: dollarsToCents(editPlanForm.price),
+        priceCents,
         includedPrivateLessons: clampNonNegativeInt(editPlanForm.includedPrivateLessons),
       })
       toast.success('Changes saved.')
@@ -366,7 +376,7 @@ export function SettingsPanel() {
                   value={addPlanForm.includedPrivateLessons}
                   onChange={(e) => setAddPlanForm((f) => ({ ...f, includedPrivateLessons: e.target.value }))}
                 />
-                <Button type="submit">Add Plan</Button>
+                <Button type="submit" disabled={addingPlan}>Add Plan</Button>
               </form>
               {addPlanError && <p className="mb-4 text-sm text-destructive">{addPlanError}</p>}
               <label className="mb-3 flex w-fit items-center gap-2 text-sm text-muted-foreground">

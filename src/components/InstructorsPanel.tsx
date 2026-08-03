@@ -58,6 +58,8 @@ export function InstructorsPanel() {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // Without this, a double-clicked submit creates the instructor twice.
+  const [adding, setAdding] = useState(false)
 
   const [editingInstructor, setEditingInstructor] = useState<Instructor | null>(null)
   const [editForm, setEditForm] = useState(EMPTY_EDIT_FORM)
@@ -80,11 +82,13 @@ export function InstructorsPanel() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
+    if (adding) return
     setError(null)
     if (!firstName.trim() || !lastName.trim()) {
       setError('First and last name are required.')
       return
     }
+    setAdding(true)
     try {
       await api.instructors.create({
         firstName: firstName.trim(),
@@ -100,6 +104,8 @@ export function InstructorsPanel() {
       await refresh()
     } catch (err) {
       toast.error(getErrorMessage(err))
+    } finally {
+      setAdding(false)
     }
   }
 
@@ -166,7 +172,7 @@ export function InstructorsPanel() {
         <Input className="w-40" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
         <Input className="w-48" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input className="w-36" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        <Button type="submit">Add Instructor</Button>
+        <Button type="submit" disabled={adding}>Add Instructor</Button>
       </form>
       {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
       <div className="mb-3 flex items-center gap-4">

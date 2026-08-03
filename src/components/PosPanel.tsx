@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { api } from '../api'
 import type { PaymentMethod, PosItem, PosSale, Student } from '../../shared/types'
 import { PAYMENT_METHODS } from '../../shared/types'
-import { PAYMENT_METHOD_LABEL, formatCents, dollarsToCents } from '@/lib/membershipFormat'
+import { PAYMENT_METHOD_LABEL, formatCents, parsePriceToCents } from '@/lib/membershipFormat'
 import { getErrorMessage } from '@/lib/errors'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { TableSkeletonRows } from './TableSkeletonRows'
@@ -158,8 +158,14 @@ export function PosPanel() {
       setItemFormError('Name is required.')
       return
     }
+    // A blank price must not quietly become $0.00 — see parsePriceToCents.
+    const priceCents = parsePriceToCents(itemForm.price)
+    if (priceCents === null) {
+      setItemFormError('Enter a price of 0 or more.')
+      return
+    }
     try {
-      await api.posItems.create({ name: itemForm.name.trim(), priceCents: dollarsToCents(itemForm.price) })
+      await api.posItems.create({ name: itemForm.name.trim(), priceCents })
       toast.success(`${itemForm.name.trim()} added.`)
       setItemForm(EMPTY_ITEM_FORM)
       await refresh()
@@ -182,10 +188,15 @@ export function PosPanel() {
       setEditItemError('Name is required.')
       return
     }
+    const priceCents = parsePriceToCents(editItemForm.price)
+    if (priceCents === null) {
+      setEditItemError('Enter a price of 0 or more.')
+      return
+    }
     try {
       await api.posItems.update(editingItem.id, {
         name: editItemForm.name.trim(),
-        priceCents: dollarsToCents(editItemForm.price),
+        priceCents,
       })
       toast.success('Changes saved.')
       setEditingItem(null)

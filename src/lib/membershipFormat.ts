@@ -36,6 +36,19 @@ export function dollarsToCents(value: string) {
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0
 }
 
+// Strict counterpart to dollarsToCents, for prices where "blank" must not
+// quietly mean "free". dollarsToCents maps an empty or unparseable string to 0,
+// which let a plan or catalog item be saved at $0.00 with a success toast — and
+// a $0 membership plan reads as permanently paid up for every student on it.
+// Returns null when there is no usable amount, so the caller has to decide.
+export function parsePriceToCents(value: string): number | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const parsed = Number.parseFloat(trimmed)
+  if (!Number.isFinite(parsed) || parsed < 0) return null
+  return Math.round(parsed * 100)
+}
+
 // Number.parseInt(...) || 0 alone would let a real negative integer (e.g.
 // "-2") through unchanged, since it's truthy — this clamps it to 0 instead.
 export function clampNonNegativeInt(value: string) {

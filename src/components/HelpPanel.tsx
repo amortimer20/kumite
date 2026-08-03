@@ -71,7 +71,9 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
               <div className="flex flex-col gap-3 text-sm">
                 <p>
                   A read-only overview of the studio's day. The three tiles at the top show active
-                  students, lessons scheduled for today, and membership dues collected this month.
+                  students, lessons scheduled for today, and everything collected this month —
+                  membership dues and POS sales together, matching the Reports tab for the same
+                  dates.
                 </p>
                 <p>
                   <strong>Today's Schedule</strong> lists today's lessons grouped by instructor, with an
@@ -119,8 +121,9 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   <strong> Delete</strong>.
                 </p>
                 <p>
-                  Deleting a student with lesson history archives them instead of a permanent delete, so
-                  their past lessons and certificates stay intact — you'll be offered the choice.
+                  Deleting a student who has lessons, a recurring series, or any membership history
+                  archives them instead of deleting, so that history stays attached to them — you'll
+                  be offered the choice.
                 </p>
               </div>
             )}
