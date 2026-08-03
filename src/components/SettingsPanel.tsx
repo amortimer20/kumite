@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Clock, CreditCard, HardDrive, Trash2 } from 'lucide-react'
+import { Clock, CreditCard, HardDrive, Info, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import { AUTO_BACKUP_FREQUENCIES, MEMBERSHIP_BILLING_FREQUENCIES } from '../../shared/types'
-import type { AppSettings, AppSettingsInput, AutoBackupFrequency, BusinessHours, MembershipBillingFrequency, MembershipPlan } from '../../shared/types'
+import type { AppInfo, AppSettings, AppSettingsInput, AutoBackupFrequency, BusinessHours, MembershipBillingFrequency, MembershipPlan } from '../../shared/types'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -48,19 +48,21 @@ const AUTO_BACKUP_FREQUENCY_LABEL: Record<AutoBackupFrequency, string> = {
   weekly: 'Weekly',
 }
 
-const SECTIONS = ['hours', 'plans', 'backup'] as const
+const SECTIONS = ['hours', 'plans', 'backup', 'about'] as const
 type Section = (typeof SECTIONS)[number]
 
 const SECTION_LABEL: Record<Section, string> = {
   hours: 'Business Hours',
   plans: 'Membership Plans',
   backup: 'Backup & Restore',
+  about: 'About',
 }
 
 const SECTION_ICON: Record<Section, typeof Clock> = {
   hours: Clock,
   plans: CreditCard,
   backup: HardDrive,
+  about: Info,
 }
 
 export function SettingsPanel() {
@@ -73,6 +75,8 @@ export function SettingsPanel() {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [settingsLoading, setSettingsLoading] = useState(true)
   const [choosingDirectory, setChoosingDirectory] = useState(false)
+
+  const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
 
   const [plans, setPlans] = useState<MembershipPlan[]>([])
   const [plansLoading, setPlansLoading] = useState(true)
@@ -92,6 +96,10 @@ export function SettingsPanel() {
 
   useEffect(() => {
     api.settings.get().then(setSettings).finally(() => setSettingsLoading(false))
+  }, [])
+
+  useEffect(() => {
+    api.appInfo.get().then(setAppInfo)
   }, [])
 
   async function updateSettings(patch: AppSettingsInput) {
@@ -476,6 +484,27 @@ export function SettingsPanel() {
                 )}
               </div>
             </>
+          )}
+
+          {section === 'about' && (
+            <div className="flex flex-col gap-3">
+              <div>
+                <Label className="mb-1">Version</Label>
+                {appInfo ? (
+                  <p className="text-sm">Kumite {appInfo.version}</p>
+                ) : (
+                  <Skeleton className="h-5 w-24" />
+                )}
+              </div>
+              <div>
+                <Label className="mb-1">Database location</Label>
+                {appInfo ? (
+                  <Input readOnly className="max-w-md" value={appInfo.dbPath} />
+                ) : (
+                  <Skeleton className="h-9 w-64" />
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>

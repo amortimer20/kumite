@@ -10,6 +10,7 @@ import { registerMembershipHandlers } from './memberships.ts'
 import { registerSettingsHandlers } from './settings.ts'
 import { registerPosHandlers } from './pos.ts'
 import { registerReportsHandlers } from './reports.ts'
+import { registerAppInfoHandlers } from './appInfo.ts'
 
 export function registerIpcHandlers() {
   registerStudentHandlers()
@@ -24,4 +25,5 @@ export function registerIpcHandlers() {
   registerSettingsHandlers()
   registerPosHandlers()
   registerReportsHandlers()
+  registerAppInfoHandlers()
 }

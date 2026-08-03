@@ -30,6 +30,13 @@ Publisher" SmartScreen warning — not a blocker, just rougher first impression)
 
 ## Done
 
+### About section in Settings
+Settings has a new "About" nav item showing the installed app version (`app.getVersion()`, sourced
+from `package.json` at build time) and the SQLite database file's on-disk location — useful for
+troubleshooting/manual backups without digging through OS-specific app-data folders. Served via a new
+`appInfo:get` IPC handler rather than a sync preload constant, to stay consistent with every other
+entry on the `Api` interface being an async `ipcRenderer.invoke` call.
+
 ### Intro lesson type (free trial for prospects)
 Scheduling a free introductory lesson no longer requires creating a full `Student` profile first.
 A new `Lesson.type` value, `"intro"`, needs only a prospect's name (and optionally a phone number for

@@ -102,6 +102,9 @@ const api: Api = {
     generate: (input: ReportDateRangeInput) => ipcRenderer.invoke('reports:generate', input),
     exportCsv: (input: ReportExportInput) => ipcRenderer.invoke('reports:exportCsv', input),
   },
+  appInfo: {
+    get: () => ipcRenderer.invoke('appInfo:get'),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

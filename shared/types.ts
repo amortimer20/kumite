@@ -576,4 +576,12 @@ export interface Api {
     // Mirrors backup.create's return convention exactly.
     exportCsv(input: ReportExportInput): Promise<{ canceled: boolean; path?: string }>
   }
+  appInfo: {
+    get(): Promise<AppInfo>
+  }
+}
+
+export interface AppInfo {
+  version: string
+  dbPath: string
 }
