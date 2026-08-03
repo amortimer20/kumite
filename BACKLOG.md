@@ -30,6 +30,14 @@ Publisher" SmartScreen warning — not a blocker, just rougher first impression)
 
 ## Done
 
+### In-app Help panel
+A "?" icon button in the header (next to Settings, not a new top-level tab) opens a Help overlay with
+a sidebar of sections — one per feature area (Dashboard, Schedule, Students, Instructors, Certificates,
+POS, Reports, Settings) — mirroring the sidebar+content layout `SettingsPanel.tsx` already uses. It's
+an overlay rather than a tab/page swap, so opening it never disturbs whatever tab the user was already
+on. Content is plain JSX per section, written to be kept in sync by hand whenever the corresponding
+panel changes, instead of a separate help document that would drift out of date.
+
 ### About section in Settings
 Settings has a new "About" nav item showing the installed app version (`app.getVersion()`, sourced
 from `package.json` at build time) and the SQLite database file's on-disk location — useful for
