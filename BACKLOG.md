@@ -192,13 +192,6 @@ care (better-sqlite3 pulls in `bindings`, `prebuild-install` and friends) and a 
 afterwards, which is why it wasn't bundled into the quick pass. Note the DMG will never drop far below
 ~100 MB regardless: Electron's own framework is ~96 MB of it.
 
-### A README that reflects reality
-`README.md` is still the unmodified Vite starter template. The mechanical setup problems it used to
-hide are fixed — `postinstall` now runs `prisma generate`, `dotenv` is a declared dependency, and
-`.env.example` documents `DATABASE_URL` — so `npm ci && npm run build` works on a fresh clone. What's
-left is purely documentation: what the app is, the dev/build/test commands, that the packaged app keeps
-its database in the OS app-data folder rather than `prisma/dev.db`, and the Windows build story.
-
 ### Electron is 13 major versions behind and out of support
 `electron@30.5.1` against 43.x current. Electron supports roughly the latest three majors, so 30 is
 well past EOL and carries unpatched Chromium and Node CVEs. Mitigating factor: the app loads only
@@ -299,6 +292,25 @@ the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg` f
 removed.)
 
 ## Done
+
+### A real README
+Replaced the unmodified Vite starter template with actual documentation: what the app is, the setup
+steps, a table of every npm script, where the database lives in development versus in a packaged
+install, the directory layout, how tests are organised, and the Windows/unsigned-installer story.
+
+Two things worth having written down that weren't anywhere before. First, the `better-sqlite3` rebuild
+dance — Node and Electron have incompatible ABIs, so `npm test` rebuilds for Node, runs Vitest, then
+rebuilds for Electron; the practical rule is "run tests with `npm test`, never bare `npx vitest`",
+because the latter fails with a `NODE_MODULE_VERSION` mismatch that looks like a broken test suite
+rather than a toolchain state problem. Second, a Notable Conventions section capturing the decisions
+that are easy to violate by accident: money as integer cents, dates via `src/lib/isoDate.ts`,
+archive-instead-of-delete, historical rows snapshotting their own values, no runtime schema validation,
+and that `HelpPanel.tsx` is the user documentation and should change in the same commit as the feature.
+
+Every documented step was verified against a genuinely fresh `git clone`: `npm install` (whose
+`postinstall` generates the Prisma client and rebuilds the native module), `cp .env.example .env`,
+`db:migrate`, `db:seed`, then typecheck, lint, and the full test suite — all green, with no manual
+steps beyond what the README lists.
 
 ### Automatic backup retention
 Settings > Backup & Restore has a "Backups to keep" dropdown next to Frequency: keep the last 10, 30,
