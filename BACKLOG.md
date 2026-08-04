@@ -213,15 +213,6 @@ Relatedly, the membership dialog's effect resets its forms but never clears `mem
 `paymentHistory`, so a failed fetch for the newly-opened student shows the previous student's figures
 under the new name.
 
-### The POS cart holds a price snapshot the server doesn't use
-`PosPanel.tsx` cart lines hold a `PosItem` captured at add-to-cart time, and `refresh()` replaces
-`items` without reconciling `cart`. Edit an item's price in Manage Items while it's in the cart and
-check out: the cart and the "Sale completed — $X" toast show the old price while the server correctly
-snapshots and records the new one, so staff quote and collect the wrong amount and Recent Sales
-immediately contradicts the toast. The server side is right — totals are always recomputed from the
-catalog and `PosSaleInput` carries no total field — so this is purely about reconciling or invalidating
-the cart when the catalog changes.
-
 ### Highest-risk untested logic
 Coverage is good where it exists (membership billing math, recurring-series dates, the student
 archive/delete path, restore validation) but concentrated there. Ranked by likelihood x cost:
@@ -274,6 +265,23 @@ the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg` f
 removed.)
 
 ## Done
+
+### POS cart no longer quotes a price the sale won't use
+Cart lines hold a snapshot of the catalog item taken at add-to-cart time, but checkout re-reads the
+catalog server-side and snapshots the price there. So editing an item from Manage Items while it sat in
+the cart left the running total — and the "Sale completed — $X" toast — showing a figure the recorded
+sale didn't use: staff could quote and collect the wrong amount, and Recent Sales would immediately
+contradict the toast. The server side was always right; only the display was stale.
+
+`refresh()` now re-points each cart line at the current catalog row via `reconcileCart` in
+`src/lib/posCart.ts` (pure, 6 tests). It lives in `src/lib` rather than `PosPanel.tsx` because exporting
+a non-component from a component file trips the `react-refresh` rule the lint gate enforces.
+
+Two deliberate calls: a line whose item was **deleted** is dropped and named in a warning toast, because
+checkout would reject it anyway and failing at the till is worse than being told up front; a line whose
+item was merely **archived** is kept, because it still exists, the sale completes, and silently removing
+something mid-transaction is more surprising than finishing it. The function also returns the original
+array by reference when nothing differs, so an unchanged cart isn't needlessly replaced on every refresh.
 
 ### Confirm before deleting a lesson that already happened
 Deleting a one-off lesson went straight through with no dialog, so scrolling the schedule back to check

@@ -6,6 +6,8 @@ import type { PaymentMethod, PosItem, PosSale, Student } from '../../shared/type
 import { PAYMENT_METHODS } from '../../shared/types'
 import { PAYMENT_METHOD_LABEL, formatCents, parsePriceToCents } from '@/lib/membershipFormat'
 import { getErrorMessage } from '@/lib/errors'
+import { reconcileCart } from '@/lib/posCart'
+import type { CartLine } from '@/lib/posCart'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { Button } from '@/components/ui/button'
@@ -46,8 +48,6 @@ import {
 // string as an item value, and a sale never requires a student.
 const WALK_IN = '__walk_in__'
 
-type CartLine = { item: PosItem; quantity: number }
-
 const EMPTY_ITEM_FORM = { name: '', price: '' }
 
 function summarizeItems(sale: PosSale) {
@@ -82,6 +82,18 @@ export function PosPanel() {
     const [allItems, allSales] = await Promise.all([api.posItems.list(), api.posSales.list()])
     setItems(allItems)
     setSales(allSales)
+
+    // The cart holds item snapshots from add-to-cart time, but checkout
+    // re-reads the catalog server-side — so an edit made from Manage Items
+    // mid-sale would otherwise leave the running total quoting a price the
+    // recorded sale doesn't use. See reconcileCart.
+    setCart((lines) => {
+      const { lines: reconciled, removedNames } = reconcileCart(lines, allItems)
+      if (removedNames.length > 0) {
+        toast.warning(`Removed from the cart — no longer in the catalog: ${removedNames.join(', ')}.`)
+      }
+      return reconciled
+    })
   }
 
   useEffect(() => {
