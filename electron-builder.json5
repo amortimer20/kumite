@@ -3,6 +3,16 @@
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
   "appId": "com.amortimer.kumite",
   "asar": true,
+  // electron-builder does not auto-unpack .node files (its detector only
+  // matches .dll/.exe/.dylib/.so), and a native module can't be loaded from
+  // inside an asar. It worked anyway because Electron's patched process.dlopen
+  // copies the binary out to a temp directory on every launch — which on
+  // Windows means writing and loading a DLL from %TEMP% at each startup, a
+  // known trigger for antivirus and AppLocker on managed machines. Unpacking it
+  // properly avoids that entirely.
+  "asarUnpack": [
+    "**/node_modules/better-sqlite3/**"
+  ],
   "productName": "Kumite",
   // Source icon electron-builder converts to .icns (mac) and .ico (win) at
   // build time — needs to be a square PNG, 1024x1024 recommended.

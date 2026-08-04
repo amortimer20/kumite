@@ -191,46 +191,25 @@ restore. That file is the only undo for a bad restore, it is never pruned, and n
 mentions that it exists or where to find it — `HelpPanel.tsx` describes Restore without it. The fatal
 startup dialog now names the folder, but that only helps when startup actually fails.
 
-### The installer is ~160 MB for ~12 MB of app
-`app.asar` is ~243 MB against ~900 kB of renderer bundle and ~11 MB of `dist-electron`. Cause:
-electron-builder always packages production dependencies regardless of the `files` list, and
-`tailwindcss`, `@tailwindcss/vite`, `tw-animate-css` and `shadcn` are all in `dependencies` despite
-being build-time only — `shadcn` alone drags in `@ts-morph/common`, `@modelcontextprotocol/sdk`,
-`@babel/*` and `@dotenvx/dotenvx`. `@prisma/client` (~79 MB) is also dead weight at runtime, because
-Vite inlines the generated client into `main.js` and only `@prisma/adapter-better-sqlite3` and
-`better-sqlite3` are required externally. Moving those to `devDependencies` should cut the download the
-studio has to take by well over half; verify the adapter still resolves afterwards. Also worth doing:
-`dist-electron` is never cleaned between builds, so stale Prisma `query_compiler_*` chunks accumulate
-into the shipped asar (~9 MB of them after a couple of builds) — `rm -rf dist dist-electron` belongs in
-the `build` script.
+### The installer still ships bundled libraries a second time
+Partly addressed: moving the build-only packages to `devDependencies` and cleaning `dist-electron`
+between builds took `app.asar` from 243 MB to 81 MB and the DMG from 160 MB to 128 MB. What remains is
+that `date-fns`, `lucide-react`, `@radix-ui`, `react-day-picker` and `pdf-lib` are each shipped as raw
+source *as well as* being bundled by Vite into `dist/assets` (renderer) or `main.js` (main) — around
+11,500 files that are never loaded, because `vite.config.ts` marks only `better-sqlite3` and
+`@prisma/adapter-better-sqlite3` as external. They can't simply move to `devDependencies` without
+lying about what the app depends on, so the honest fix is an explicit `files` allowlist in
+`electron-builder.json5` that packages only those two externals and their transitive deps. That needs
+care (better-sqlite3 pulls in `bindings`, `prebuild-install` and friends) and a verified launch
+afterwards, which is why it wasn't bundled into the quick pass. Note the DMG will never drop far below
+~100 MB regardless: Electron's own framework is ~96 MB of it.
 
-### better-sqlite3's native binary is packed inside app.asar
-There is no `app.asar.unpacked` directory and `asarUnpack` is unset in `electron-builder.json5`;
-electron-builder doesn't auto-unpack `.node` files (its unpack detector only matches
-`.dll/.exe/.dylib/.so`). It works today only because Electron's patched `process.dlopen` copies the
-binary out to a temp directory on every launch — verified working on macOS. On Windows that means
-writing and loading a DLL from `%TEMP%` at every startup, which is a well-known trigger for antivirus
-and AppLocker interference in exactly the kind of managed small-business environment this is going to.
-`"asarUnpack": ["**/node_modules/better-sqlite3/**"]` is the cheapest de-risking available before the
-Windows beta.
-
-### A clean checkout can't be set up or built from the docs
-Four compounding problems. `README.md` is still the unmodified Vite starter template — no mention of
-`prisma generate`, `db:migrate`, the `postinstall` electron-rebuild step, or `.env`. `generated/prisma`
-is gitignored and nothing generates it: `postinstall` only runs electron-rebuild and `build` is
-`tsc && vite build && electron-builder`, so `npm ci && npm run build` fails on a fresh clone (the
-Windows workflow only works because it has a separate manual `npx prisma generate` step) — adding
-`prisma generate` to `postinstall` fixes it. `prisma.config.ts` does `import "dotenv/config"` but
-`dotenv` is not a declared dependency; every `prisma` CLI command currently works by accident, via
-hoisting from `c12`/`@dotenvx/dotenvx`. And there's no `.env.example`, so `DATABASE_URL` is
-undiscoverable.
-
-### `npm run lint` fails on a clean checkout
-`src/components/ui/button.tsx` exports `buttonVariants` (used by `ui/calendar.tsx`), which trips
-`react-refresh/only-export-components`, and the script runs with `--max-warnings 0`. So the declared
-lint gate has never been passable. Fix with an eslint `overrides` entry disabling that rule for
-`src/components/ui/**`, since those files are shadcn-generated and the pattern is theirs — don't delete
-the export.
+### A README that reflects reality
+`README.md` is still the unmodified Vite starter template. The mechanical setup problems it used to
+hide are fixed — `postinstall` now runs `prisma generate`, `dotenv` is a declared dependency, and
+`.env.example` documents `DATABASE_URL` — so `npm ci && npm run build` works on a fresh clone. What's
+left is purely documentation: what the app is, the dev/build/test commands, that the packaged app keeps
+its database in the OS app-data folder rather than `prisma/dev.db`, and the Windows build story.
 
 ### Electron is 13 major versions behind and out of support
 `electron@30.5.1` against 43.x current. Electron supports roughly the latest three majors, so 30 is
@@ -239,16 +218,14 @@ local files, renders no remote content, and has no external links, so there's no
 path — this is why it's here and not in the blockers. Still worth scheduling, and the upgrade will
 want a `better-sqlite3` rebuild and a check of the `sandbox`/preload behaviour described below.
 
-### Windows installer metadata and window sizing
-Three small polish items that are all visible to the studio. `package.json` has no `author` and no
-`description`; `author.name` is what electron-builder writes as `CompanyName`, so the installer and
-the Programs & Features entry currently show a blank Publisher (trust signal only — `productName`
-already supplies the exe's FileDescription/ProductName). `BrowserWindow` sets no `width`/`height`/
-`minWidth`, so the app opens at Electron's 800x600 default, which is cramped for this app's tables.
-And `app.getName()` resolves to the package `name`, so user data lands in `%APPDATA%\karate-app`
-rather than `Kumite` — that path is shown to users in Settings > About; setting `productName` in
-`package.json` would make it match, but note it changes where the database lives, so it needs a
-migration story rather than a bare rename.
+### User data lives in a folder named after the package, not the product
+`app.getName()` resolves to the package `name`, so the database lands in `%APPDATA%\karate-app`
+(`~/Library/Application Support/karate-app` on macOS) rather than `Kumite` — and that path is shown to
+users in Settings > About, so the mismatch is visible. Setting `productName` in `package.json` would
+fix the name, but it also changes where the database lives, so it needs a migrate-the-existing-file
+story rather than a bare rename. Best done before the studio has data worth moving, or not at all.
+(The `author`/`description` metadata and the 800x600 default window that used to be in this entry are
+both fixed.)
 
 ### Stale-response races in three dialogs
 `SchedulePanel.tsx` guards against this with `lessonsRequestIdRef`; three places that need the same
@@ -326,15 +303,37 @@ the open time, which then makes the Schedule availability grid silently render n
 receive rows. `SchedulePanel.tsx` and `CertificatesPanel.tsx` still define local `todayIsoDate()` /
 `dateToIso()` helpers byte-identical to the ones in `src/lib/isoDate.ts` — whose own header comment
 points back at SchedulePanel as the convention it was extracted from, so the extraction happened but
-the call sites were never migrated. `HelpPanel.tsx` claims a deleted student's "past lessons and
+the call sites were never migrated. And `HelpPanel.tsx` claims a deleted student's "past lessons and
 certificates stay intact", but there is no certificate persistence anywhere — certificates are
-generated to a temp file and never recorded — so "and certificates" should go. Finally, some Vite
-template leftovers still ship: `main.ts` sends a `main-process-message` nothing listens for and has
-the one commented-out line in the repo, `index.html` still uses the default `/vite.svg` favicon, and
-`public/electron-vite.svg` / `electron-vite.animate.svg` are referenced nowhere but get copied into
-the packaged app.
+generated to a temp file and never recorded — so "and certificates" should go. (The Vite template
+leftovers that used to be listed here — the dead `main-process-message`, the one commented-out line,
+the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg` files — are all
+removed.)
 
 ## Done
+
+### Release hygiene pass: lint gate, installer size, native module, startup polish
+A batch of small fixes from the pre-beta review, all release-facing rather than behavioural.
+`npm run lint` now passes for the first time — `--max-warnings 0` had been failing on shadcn's own
+convention of exporting `buttonVariants` beside the component, so `react-refresh/only-export-components`
+is now off for `src/components/ui/**` only, rather than deleting an export `ui/calendar.tsx` needs.
+`asarUnpack` now extracts `better-sqlite3`, so the native binary is a real file on disk instead of
+relying on Electron copying a DLL out of the asar into `%TEMP%` on every launch — the main
+antivirus/AppLocker risk on a managed Windows machine. Moving `@prisma/client`, `shadcn`, `tailwindcss`,
+`@tailwindcss/vite` and `tw-animate-css` to `devDependencies`, plus cleaning `dist` and `dist-electron`
+at the start of `build`, took `app.asar` from 243 MB to 81 MB and the DMG from 160 MB to 128 MB.
+Removing `@prisma/client` from the package is safe and was verified two ways: `vite.config.ts` marks
+only `better-sqlite3` and `@prisma/adapter-better-sqlite3` as external, so the generated client is
+inlined into `main.js`, and the built bundle contains no runtime reference to the package at all.
+`postinstall` now runs `prisma generate`, `dotenv` is a declared dependency instead of resolving by
+accident through hoisting, and `.env.example` documents `DATABASE_URL` — so a fresh clone builds.
+Added `author` and `description` so the Windows installer and Programs & Features entry stop showing a
+blank Publisher. The window now opens at 1280x860 with a 960x640 minimum instead of Electron's cramped
+800x600 default. And the last Vite template leftovers are gone: the dead `main-process-message` IPC
+send, the one commented-out line in the repo, the default `/vite.svg` favicon (now the real
+`icon.png`), and two unreferenced `public/electron-vite*.svg` files that were being copied into the
+packaged app. Verified with a packaged build and a fresh-install launch: 16 migrations applied,
+`integrity_check` ok, 82 tests passing.
 
 ### Membership billing no longer re-bills the past
 The balance is recomputed from `startDate` on every read, and it used to read the plan's *current*
