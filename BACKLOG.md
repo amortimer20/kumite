@@ -63,24 +63,89 @@ rather than read from a list of what was actually charged when. That's why the s
 retroactively rewrote history. It works and is now correct for the cases the app supports, but a real
 ledger (one row per period charged, with its own price) would make partial-period proration,
 mid-period plan changes, and "show me exactly why this student owes this" straightforwardly
-expressible instead of needing another carry-forward field each time. Worth considering before the
-non-traditional-fees work below, since that's likely to need proration.
+expressible instead of needing another carry-forward field each time. Not a blocker for the
+non-traditional-fees work below, as first thought — that design's proration and paid-extra-lesson
+charges both fit `priorChargesCents` as it stands. This stays a "worth doing eventually" item, and the
+case for it is readability of the balance rather than any capability the app currently lacks.
 
-## Non-traditional membership fees (needs clarification)
-The last feature-shaped gap before the app is considered feature-complete for its first iteration.
-Blocked on the studio owner working out the actual business rules — not yet a design, just the open
-questions to resolve before one can be written:
-- **Paying for one or more extra lessons.** How does this affect the membership's due date? Does it
-  make the existing "included private lessons per plan" / bonus-lesson mechanism redundant, or do the
-  two coexist? Does an extra-lesson purchase carry over into the next billing month if unused, or does
-  it expire at the period boundary like the plan's included lessons currently do?
-- **Pro-rating.** What does "pro rate" mean here in practice — a mid-cycle plan change/upgrade
-  prorated to the remaining days in the period, a prorated first payment for someone joining mid-month,
-  or something else the studio does today that isn't represented in the app at all yet?
-- **Pay-as-you-go membership.** Does the studio actually offer this as a membership type (as opposed
-  to just POS drop-in sales, which already exist)? If so, it likely doesn't fit the current
-  `MembershipPlan` model's assumption of a fixed recurring price/billing frequency, and touches due-date
-  and balance-owed logic (`electron/ipc/memberships.ts`) that assumes a regular billing cycle.
+## Non-traditional membership fees — paid extra lessons and proration
+The last feature-shaped gap before the app is feature-complete for its first iteration. The business
+rules are now settled (answers from the studio owner below), so this is a design ready to build rather
+than an open question.
+
+**The rules, as answered.** Reference membership is one lesson per week, billed monthly.
+- Membership dues are still due on the normal billing date, regardless of any paid extra lessons.
+- Extra lessons do **not** carry over into the next month — use it or lose it.
+- There are **no** prepaid memberships. "Paying weekly" just means a weekly-billed membership, which
+  the app already supports, so there is nothing to build for this.
+- **Pro rate**: a student can be charged for a portion of a month, so that from then on they are
+  billed at the start of each month like everyone else.
+- Students are normally billed on the **1st**, and that should be the default when setting up a
+  membership.
+
+**What already works.** Use-it-or-lose-it is how the app behaves today, by design rather than by
+accident: `scheduledLessons` is counted only within `[periodStart, periodEnd)`
+(`electron/ipc/memberships.ts`), usage adjustments are filtered to the same window
+(`electron/membershipLogic.ts` `computeUsage`), and remaining lessons are recomputed from the plan each
+period with no stored balance that could roll forward. So the carry-over question needs no work at all.
+
+**What's actually missing.** A *paid* extra lesson has no home. `MembershipUsageAdjustment` is only
+`delta` + `reason` — no amount, no payment method, and it never reaches Reports. So today staff have to
+pick one half-measure: ring it up as a POS sale (money is recorded, but the lesson then eats into the
+student's included allowance) or add a bonus adjustment (allowance is right, but the income is invisible
+to Reports entirely). The second silently under-reports revenue, which is the worse of the two.
+
+**Design — paid extra lessons.** One dialog, one atomic operation, three legs, all reusing mechanisms
+that already exist:
+
+| Leg | Mechanism | Why it's needed |
+| --- | --- | --- |
+| Charge | add to `priorChargesCents` | keeps owed = (ever charged - ever paid) correct |
+| Payment | a `MembershipPayment` row | money lands in the existing membership-dues revenue line |
+| Allowance | a positive `MembershipUsageAdjustment` delta | +N lessons, already period-scoped so it expires correctly |
+
+The charge leg is **not optional**. A payment with no matching charge is read as prepayment toward
+dues and silently reduces what the student owes next month — the same phantom-credit failure mode as
+the plan-switch bug fixed in "Membership billing no longer re-bills the past" below. All three legs
+must be written in one transaction so staff can't half-complete it.
+
+Routing the payment through `MembershipPayment` also answers where the money shows up: it flows into
+the membership-dues line Reports already has, so no third top-level revenue source is needed and the
+existing include-toggles and CSV export stay as they are.
+
+Price is typed in per transaction — the studio has no fixed rate, and it flexes by student and by how
+many lessons are being bought. This matches the precedent already set by
+`StudentMembership.priceOverrideCents`, so it isn't a new pricing philosophy. Two guardrails:
+- Validate greater than zero, per the price-validation fix already in Done. A free-typed amount with
+  no reference point on screen is exactly where a $5-for-$50 typo hides unnoticed.
+- Pre-fill with the last extra-lesson amount charged to that student. No schema cost (it's already in
+  the data), it removes the retyping, and it gives staff a sanity reference. Deliberately **not** a
+  plan-level default rate — that's speculative until a standard rate actually emerges, and the
+  pre-fill covers the ergonomics without committing to a rule.
+
+**Design — proration.** A suggested value the user can override.
+- Suggest `round(monthlyPrice x daysRemaining / daysInMonth)`, pre-filled and editable. Chosen over
+  prorating by scheduled lesson count because it's explainable to a parent at the desk and doesn't
+  depend on the schedule already existing at signup.
+- Set `startDate` to the **1st of the next month** and put the agreed stub in `priorChargesCents`. The
+  balance math then needs no changes at all: owed = stub + (periods since the 1st x price) - paid.
+- Moving the anchor to the 1st is the whole point — leaving it on the join date bills the student on
+  the 17th in perpetuity, which is precisely what proration is meant to avoid.
+- Because the amount is overridable it has to be *stored* rather than re-derived from dates, which is
+  already what `priorChargesCents` does, so supporting the override costs nothing.
+- Offer proration only for monthly memberships. Weekly and biweekly periods are short enough that a
+  stub isn't worth the complexity, and the studio's answer only describes the monthly case.
+
+**Prerequisite, folded in here.** Default the assign-membership start date to the 1st.
+`EMPTY_ASSIGN_FORM` in `src/components/StudentMembershipDialog.tsx` currently evaluates `todayIso()`
+once at module load, so the default is both stale on a front-desk machine left running for days and
+wrong for any mid-month signup. Proration depends on this, so it isn't tracked separately.
+
+**Scope notes.** This needs no per-period charge ledger (see the entry above) — a one-off stub and a
+one-off extra-lesson charge both fit `priorChargesCents` as it stands. The billing math in
+`electron/membershipLogic.ts` has good unit coverage already, so the proration calculation and the
+three-leg charge should get tests there. `src/components/HelpPanel.tsx` will need its Students and
+Settings sections updated to describe both flows.
 
 ## Black belt certificate templates — waiting on real files
 Already tracked above ("Black belt certificate templates (1st-10th degree) still placeholders") —
