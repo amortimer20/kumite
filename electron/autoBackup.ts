@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { prisma } from './db.ts'
 import { backupDatabaseTo } from './ipc/backup.ts'
@@ -19,6 +20,7 @@ export function toAppSettings(row: {
   autoBackupEnabled: boolean
   autoBackupDirectory: string | null
   autoBackupFrequency: string
+  autoBackupKeepCount: number | null
   lastAutoBackupAt: Date | null
 }) {
   return {
@@ -35,7 +37,36 @@ function timestampedBackupName() {
   return `kumite-auto-backup-${stamp}.db`
 }
 
-async function runAutoBackupNow(directory: string) {
+// Only files this feature created. The backup folder is user-chosen and the UI
+// actively suggests a synced OneDrive/Dropbox folder, so it may well contain
+// unrelated files — including manual "Export Backup" files, which are named
+// `kumite-backup-<date>.db` and must never be pruned, since the user saved
+// those deliberately. Anchored so that prefix can't match.
+const AUTO_BACKUP_FILENAME = /^kumite-auto-backup-.+\.db$/
+
+// Which files to delete, given everything currently in the folder. Pure and
+// exported so the choice of what to destroy is unit-tested rather than only
+// exercised against a real directory.
+//
+// Ordering is by filename, not mtime: the names are ISO-timestamped precisely
+// so they sort chronologically, and mtime is unreliable here because a sync
+// client re-downloading a file rewrites it.
+export function backupsToPrune(filenames: string[], keepCount: number | null): string[] {
+  // Fail safe toward keeping files: null means keep everything, and a nonsense
+  // count (0, negative, non-integer) deletes nothing rather than everything.
+  if (keepCount === null || !Number.isInteger(keepCount) || keepCount < 1) return []
+  const ours = filenames.filter((name) => AUTO_BACKUP_FILENAME.test(name)).sort()
+  return ours.slice(0, Math.max(0, ours.length - keepCount))
+}
+
+async function pruneOldBackups(directory: string, keepCount: number | null) {
+  const entries = await fs.promises.readdir(directory)
+  for (const name of backupsToPrune(entries, keepCount)) {
+    await fs.promises.rm(path.join(directory, name), { force: true })
+  }
+}
+
+async function runAutoBackupNow(directory: string, keepCount: number | null) {
   try {
     await backupDatabaseTo(path.join(directory, timestampedBackupName()))
     await prisma.appSettings.update({ where: { id: 1 }, data: { lastAutoBackupAt: new Date() } })
@@ -44,13 +75,25 @@ async function runAutoBackupNow(directory: string) {
     // A bad/removed directory shouldn't crash the app; it just skips a beat
     // and tries again next interval.
     console.error('Automatic backup failed:', err)
+    return
+  }
+
+  // Separate from the block above so a pruning problem (a permissions error, a
+  // file held open by a sync client) can't make a backup that genuinely
+  // succeeded look like it failed.
+  try {
+    await pruneOldBackups(directory, keepCount)
+  } catch (err) {
+    console.error('Could not delete old automatic backups:', err)
   }
 }
 
 // Clears any previous schedule and starts a new one from scratch — called
 // both at app startup (with whatever was last saved) and every time the
 // user changes a setting, so a running timer never outlives its config.
-export function reconfigureAutoBackup(settings: Pick<AppSettings, 'autoBackupEnabled' | 'autoBackupDirectory' | 'autoBackupFrequency'>) {
+export function reconfigureAutoBackup(
+  settings: Pick<AppSettings, 'autoBackupEnabled' | 'autoBackupDirectory' | 'autoBackupFrequency' | 'autoBackupKeepCount'>,
+) {
   if (timer) {
     clearInterval(timer)
     timer = null
@@ -58,12 +101,13 @@ export function reconfigureAutoBackup(settings: Pick<AppSettings, 'autoBackupEna
   if (!settings.autoBackupEnabled || !settings.autoBackupDirectory) return
 
   const directory = settings.autoBackupDirectory
+  const keepCount = settings.autoBackupKeepCount
   const intervalMs = AUTO_BACKUP_FREQUENCY_MINUTES[settings.autoBackupFrequency] * 60_000
   // Run one immediately — confirms it's working right away instead of
   // waiting a full interval (up to a week, at the slowest setting) for the
   // first proof it's active.
-  void runAutoBackupNow(directory)
-  timer = setInterval(() => void runAutoBackupNow(directory), intervalMs)
+  void runAutoBackupNow(directory, keepCount)
+  timer = setInterval(() => void runAutoBackupNow(directory, keepCount), intervalMs)
 }
 
 export async function startAutoBackupScheduler() {

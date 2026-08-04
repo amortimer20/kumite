@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Clock, CreditCard, HardDrive, Info, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
-import { AUTO_BACKUP_FREQUENCIES, MEMBERSHIP_BILLING_FREQUENCIES } from '../../shared/types'
+import { AUTO_BACKUP_FREQUENCIES, AUTO_BACKUP_KEEP_COUNTS, MEMBERSHIP_BILLING_FREQUENCIES } from '../../shared/types'
 import type { AppInfo, AppSettings, AppSettingsInput, AutoBackupFrequency, BusinessHours, MembershipBillingFrequency, MembershipPlan } from '../../shared/types'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { Button } from '@/components/ui/button'
@@ -40,6 +40,10 @@ import {
 const DAY_LABEL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 const EMPTY_PLAN_FORM = { title: '', billingFrequency: 'monthly' as MembershipBillingFrequency, price: '', includedPrivateLessons: '0' }
+
+// Radix Select values are strings, so "keep everything" needs a sentinel that
+// can't collide with a stringified count.
+const KEEP_ALL = 'all'
 
 const AUTO_BACKUP_FREQUENCY_LABEL: Record<AutoBackupFrequency, string> = {
   hourly: 'Every hour',
@@ -477,22 +481,50 @@ export function SettingsPanel() {
                             </Button>
                           </div>
 
-                          <div className="w-48">
-                            <Label className="mb-1">Frequency</Label>
-                            <Select
-                              value={settings.autoBackupFrequency}
-                              onValueChange={(v) => updateSettings({ autoBackupFrequency: v as AutoBackupFrequency })}
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {AUTO_BACKUP_FREQUENCIES.map((freq) => (
-                                  <SelectItem key={freq} value={freq}>{AUTO_BACKUP_FREQUENCY_LABEL[freq]}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                          <div className="flex gap-3">
+                            <div className="w-48">
+                              <Label className="mb-1">Frequency</Label>
+                              <Select
+                                value={settings.autoBackupFrequency}
+                                onValueChange={(v) => updateSettings({ autoBackupFrequency: v as AutoBackupFrequency })}
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {AUTO_BACKUP_FREQUENCIES.map((freq) => (
+                                    <SelectItem key={freq} value={freq}>{AUTO_BACKUP_FREQUENCY_LABEL[freq]}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            <div className="w-48">
+                              <Label className="mb-1">Backups to keep</Label>
+                              <Select
+                                value={settings.autoBackupKeepCount === null ? KEEP_ALL : String(settings.autoBackupKeepCount)}
+                                onValueChange={(v) =>
+                                  updateSettings({ autoBackupKeepCount: v === KEEP_ALL ? null : Number(v) })
+                                }
+                              >
+                                <SelectTrigger className="w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {AUTO_BACKUP_KEEP_COUNTS.map((count) => (
+                                    <SelectItem key={count} value={String(count)}>Keep last {count}</SelectItem>
+                                  ))}
+                                  <SelectItem value={KEEP_ALL}>Keep all</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
+
+                          <p className="text-sm text-muted-foreground">
+                            {settings.autoBackupKeepCount === null
+                              ? 'Older backups are never deleted, so this folder will keep growing.'
+                              : `Once there are more than ${settings.autoBackupKeepCount} automatic backups, the oldest is deleted. Backups you export yourself are never deleted.`}
+                          </p>
 
                           <p className="text-sm text-muted-foreground">
                             {!settings.autoBackupDirectory

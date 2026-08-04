@@ -2,13 +2,6 @@
 
 Feature ideas discussed but not yet implemented, roughly in the order we'd want to tackle them.
 
-## No retention policy on automatic backups
-The new automatic-backup feature (see Done below) never deletes old backups — at the hourly setting
-especially, these will accumulate indefinitely and could fill a drive over months of use. Not built
-now since it wasn't asked for, but worth a "keep last N" or "delete older than X days" cleanup pass
-in `electron/autoBackup.ts`'s `runAutoBackupNow` before this ships to a studio actually running it
-hourly for a long time.
-
 ## Black belt certificate templates (1st-10th degree) still placeholders
 Yellow through Brown 1st now have the studio's real certificate designs (see Done below), but no
 Black-belt templates exist yet — `scripts/generate-placeholder-certificates.ts` still generates
@@ -16,7 +9,8 @@ those 10. Swap them in via `electron/certificates/ranks.ts`'s `RANK_TEMPLATES` m
 exist, following the same pattern as the other ranks (drop the file in, add `namePlacement`/
 `datePlacement` coordinates, remove `isPlaceholder`). Note the studio's convention is no "junior"
 Black-belt certificate at all — juniors aren't graded to black belt — so these only ever need a
-`regular` entry.
+`regular` entry. Blocked purely on the studio owner sourcing the real template files — the swap-in
+mechanism is already built and needs no further design work.
 
 ## Verify the Windows installer end-to-end
 No in-app/over-the-air auto-updates — updates will just be a newer installer the studio re-runs
@@ -146,12 +140,6 @@ one-off extra-lesson charge both fit `priorChargesCents` as it stands. The billi
 `electron/membershipLogic.ts` has good unit coverage already, so the proration calculation and the
 three-leg charge should get tests there. `src/components/HelpPanel.tsx` will need its Students and
 Settings sections updated to describe both flows.
-
-## Black belt certificate templates — waiting on real files
-Already tracked above ("Black belt certificate templates (1st-10th degree) still placeholders") —
-noting here that this is specifically blocked on the studio owner sourcing/providing the actual
-template files, not on any further design work; the swap-in mechanism described above is already
-built and ready.
 
 ## From the pre-beta code review (not yet addressed)
 The data-loss/startup blockers and the money-correctness findings from that review are fixed (see
@@ -311,6 +299,26 @@ the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg` f
 removed.)
 
 ## Done
+
+### Automatic backup retention
+Settings > Backup & Restore has a "Backups to keep" dropdown next to Frequency: keep the last 10, 30,
+60, 100, or **Keep all**. Default is 30, which at the default Daily frequency is roughly a month of
+history. Counts rather than an age cap ("older than 30 days"), because the problem being solved is
+unbounded folder growth and only a count bounds disk use predictably at the Hourly setting — the two
+settings do interact, and the Help text says so. "Keep all" exists deliberately: deleting backups is
+destructive, it's what the app did before this existed, and the user should be able to opt out rather
+than have pruning imposed. Stored as `AppSettings.autoBackupKeepCount`, nullable, where null means keep
+everything.
+
+The decision of *what* to delete is a pure exported function (`backupsToPrune`) with 13 tests, rather
+than logic buried in the filesystem call — deleting the wrong file here is unrecoverable. Two
+safeguards worth noting: it matches only `kumite-auto-backup-*.db` anchored at the start, so a manual
+"Export Backup" file (`kumite-backup-<date>.db`) can never be pruned even though its name is similar,
+and an invalid retention value (0, negative, non-integer) deletes *nothing* rather than everything.
+Ordering is by filename, not mtime — the names are ISO-timestamped so they sort chronologically, and
+mtime is unreliable in exactly the synced OneDrive/Dropbox folder the UI recommends, since a sync
+client re-downloading a file rewrites it. Pruning runs after a successful backup in its own try/catch,
+so a permissions error while deleting can't make a backup that actually succeeded look like a failure.
 
 ### Release hygiene pass: lint gate, installer size, native module, startup polish
 A batch of small fixes from the pre-beta review, all release-facing rather than behavioural.

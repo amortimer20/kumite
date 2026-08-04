@@ -192,12 +192,25 @@ export const AUTO_BACKUP_FREQUENCY_MINUTES: Record<AutoBackupFrequency, number> 
   weekly: 60 * 24 * 7,
 }
 
+// Retention choices offered in Settings. Deliberately counts rather than an
+// age ("delete older than 30 days"), because what the user is protecting
+// against is the folder growing without bound — a count caps disk use
+// predictably, where an age cap doesn't at the hourly frequency. Note the two
+// settings interact: 30 backups is a month of history at Daily but only about
+// a day at Hourly.
+export const AUTO_BACKUP_KEEP_COUNTS = [10, 30, 60, 100] as const
+
 export interface AppSettings {
   autoBackupEnabled: boolean
   // Null until the user picks a folder — backups don't run until then, even
   // if autoBackupEnabled is true.
   autoBackupDirectory: string | null
   autoBackupFrequency: AutoBackupFrequency
+  // How many backups to keep; null means keep all of them. Typed as a plain
+  // number rather than the AUTO_BACKUP_KEEP_COUNTS union so a value that isn't
+  // one of the presets (a hand-edited row, or a preset we later drop) still
+  // prunes to whatever it says instead of needing a fallback.
+  autoBackupKeepCount: number | null
   // Null if an automatic backup has never completed successfully.
   lastAutoBackupAt: string | null
 }
@@ -206,6 +219,7 @@ export interface AppSettingsInput {
   autoBackupEnabled?: boolean
   autoBackupDirectory?: string | null
   autoBackupFrequency?: AutoBackupFrequency
+  autoBackupKeepCount?: number | null
 }
 
 // "junior" certificates are a distinct template per rank (same wording,

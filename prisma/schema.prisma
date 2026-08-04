@@ -125,6 +125,12 @@ model AppSettings {
   // "hourly" | "every_6_hours" | "daily" | "weekly" — see
   // AUTO_BACKUP_FREQUENCIES in shared/types.ts.
   autoBackupFrequency   String    @default("daily")
+  // How many automatic backups to keep in the folder; older ones are deleted
+  // after each successful backup. Null means keep every backup forever, which
+  // is what the app did before this existed — an explicit choice rather than
+  // an accident, since deleting backups is destructive and the user should be
+  // able to opt out of it.
+  autoBackupKeepCount   Int?      @default(30)
   // Timestamp of the last automatic backup that actually completed —
   // surfaced in Settings so the user has proof it's running, not just the
   // checkbox's word for it.
