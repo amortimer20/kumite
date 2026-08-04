@@ -88,6 +88,187 @@ noting here that this is specifically blocked on the studio owner sourcing/provi
 template files, not on any further design work; the swap-in mechanism described above is already
 built and ready.
 
+## From the pre-beta code review (not yet addressed)
+The data-loss/startup blockers and the money-correctness findings from that review are fixed (see
+Done). These are the rest, kept in one place so they don't get lost. Roughly in the order worth
+tackling.
+
+### The renderer has no error boundary, and most failures are silent
+There is no `ErrorBoundary` and no `unhandledrejection` handler anywhere in `src/`, so a render-time
+throw blanks the whole window with no reload path. Separately, most mutating `api.*` calls still have
+no `try/catch`: the established convention is `catch (err) { toast.error(getErrorMessage(err)) }`, and
+every `onSubmit` follows it, but most non-submit handlers don't — a failed IPC call is then an
+unhandled rejection with zero user feedback, i.e. the click just appears to do nothing.
+`src/hooks/useLessonDelete.ts` is the only file that calls `api.*` without even importing
+`getErrorMessage`. Worth doing in the same pass: `SettingsPanel.tsx`'s business-hours handler updates
+state optimistically and then awaits with no catch, so a failed write leaves the UI displaying a value
+the database never took. Also every *initial* fetch is uncaught, which is worse than it sounds —
+`DashboardPanel.tsx` clears `loading` in `.finally`, so if its three parallel calls reject the
+dashboard confidently renders "0 Active students", "$0.00 Collected this month" and "All memberships
+are up to date." A generic "couldn't load" state would be a big improvement over that.
+
+### Automatic backups fail invisibly, and a partial write looks like a valid backup
+Two gaps beyond the retention item above, both in `electron/autoBackup.ts`. First, every failure is
+swallowed to `console.error` and `lastAutoBackupAt` is only written on success, so if the target folder
+is renamed, deleted, or is a network/OneDrive path that stops resolving, backups silently stop forever
+while Settings keeps showing a stale date — the user's mental model stays "backups are on". This
+compounds everything else here, since backups are the only recovery path. Second, `backupDatabaseTo`
+writes straight to the final timestamped filename, so a write interrupted by a pulled USB stick or a
+quit leaves a correctly-named file that is not a usable backup. Writing to `<name>.partial` and
+renaming on success, plus a `PRAGMA integrity_check` on the result, would make a bad backup impossible
+to mistake for a good one. (Restore now validates the file it's given, so a bad backup is at least
+caught at restore time rather than bricking the app — but it's still a backup the studio thought they
+had and don't.)
+
+### Restore safety copies are never surfaced anywhere
+`electron/db.ts` renames the outgoing database to `<name>.pre-restore-<epoch>` before swapping in a
+restore. That file is the only undo for a bad restore, it is never pruned, and nothing in the UI
+mentions that it exists or where to find it — `HelpPanel.tsx` describes Restore without it. The fatal
+startup dialog now names the folder, but that only helps when startup actually fails.
+
+### The installer is ~160 MB for ~12 MB of app
+`app.asar` is ~243 MB against ~900 kB of renderer bundle and ~11 MB of `dist-electron`. Cause:
+electron-builder always packages production dependencies regardless of the `files` list, and
+`tailwindcss`, `@tailwindcss/vite`, `tw-animate-css` and `shadcn` are all in `dependencies` despite
+being build-time only — `shadcn` alone drags in `@ts-morph/common`, `@modelcontextprotocol/sdk`,
+`@babel/*` and `@dotenvx/dotenvx`. `@prisma/client` (~79 MB) is also dead weight at runtime, because
+Vite inlines the generated client into `main.js` and only `@prisma/adapter-better-sqlite3` and
+`better-sqlite3` are required externally. Moving those to `devDependencies` should cut the download the
+studio has to take by well over half; verify the adapter still resolves afterwards. Also worth doing:
+`dist-electron` is never cleaned between builds, so stale Prisma `query_compiler_*` chunks accumulate
+into the shipped asar (~9 MB of them after a couple of builds) — `rm -rf dist dist-electron` belongs in
+the `build` script.
+
+### better-sqlite3's native binary is packed inside app.asar
+There is no `app.asar.unpacked` directory and `asarUnpack` is unset in `electron-builder.json5`;
+electron-builder doesn't auto-unpack `.node` files (its unpack detector only matches
+`.dll/.exe/.dylib/.so`). It works today only because Electron's patched `process.dlopen` copies the
+binary out to a temp directory on every launch — verified working on macOS. On Windows that means
+writing and loading a DLL from `%TEMP%` at every startup, which is a well-known trigger for antivirus
+and AppLocker interference in exactly the kind of managed small-business environment this is going to.
+`"asarUnpack": ["**/node_modules/better-sqlite3/**"]` is the cheapest de-risking available before the
+Windows beta.
+
+### A clean checkout can't be set up or built from the docs
+Four compounding problems. `README.md` is still the unmodified Vite starter template — no mention of
+`prisma generate`, `db:migrate`, the `postinstall` electron-rebuild step, or `.env`. `generated/prisma`
+is gitignored and nothing generates it: `postinstall` only runs electron-rebuild and `build` is
+`tsc && vite build && electron-builder`, so `npm ci && npm run build` fails on a fresh clone (the
+Windows workflow only works because it has a separate manual `npx prisma generate` step) — adding
+`prisma generate` to `postinstall` fixes it. `prisma.config.ts` does `import "dotenv/config"` but
+`dotenv` is not a declared dependency; every `prisma` CLI command currently works by accident, via
+hoisting from `c12`/`@dotenvx/dotenvx`. And there's no `.env.example`, so `DATABASE_URL` is
+undiscoverable.
+
+### `npm run lint` fails on a clean checkout
+`src/components/ui/button.tsx` exports `buttonVariants` (used by `ui/calendar.tsx`), which trips
+`react-refresh/only-export-components`, and the script runs with `--max-warnings 0`. So the declared
+lint gate has never been passable. Fix with an eslint `overrides` entry disabling that rule for
+`src/components/ui/**`, since those files are shadcn-generated and the pattern is theirs — don't delete
+the export.
+
+### Electron is 13 major versions behind and out of support
+`electron@30.5.1` against 43.x current. Electron supports roughly the latest three majors, so 30 is
+well past EOL and carries unpatched Chromium and Node CVEs. Mitigating factor: the app loads only
+local files, renders no remote content, and has no external links, so there's no obvious delivery
+path — this is why it's here and not in the blockers. Still worth scheduling, and the upgrade will
+want a `better-sqlite3` rebuild and a check of the `sandbox`/preload behaviour described below.
+
+### Windows installer metadata and window sizing
+Three small polish items that are all visible to the studio. `package.json` has no `author` and no
+`description`; `author.name` is what electron-builder writes as `CompanyName`, so the installer and
+the Programs & Features entry currently show a blank Publisher (trust signal only — `productName`
+already supplies the exe's FileDescription/ProductName). `BrowserWindow` sets no `width`/`height`/
+`minWidth`, so the app opens at Electron's 800x600 default, which is cramped for this app's tables.
+And `app.getName()` resolves to the package `name`, so user data lands in `%APPDATA%\karate-app`
+rather than `Kumite` — that path is shown to users in Settings > About; setting `productName` in
+`package.json` would make it match, but note it changes where the database lives, so it needs a
+migration story rather than a bare rename.
+
+### Stale-response races in three dialogs
+`SchedulePanel.tsx` guards against this with `lessonsRequestIdRef`; three places that need the same
+guard don't have it. Worst is `StudentMembershipDialog.tsx`, keyed on `student?.id` with no guard: open
+student A (slow query, long payment history), close, open student B, and A's membership, amount owed
+and payment history can land last and render under B's name — and because `membership.id` comes from
+that stale object, a payment recorded from that screen posts to A's membership. Same shape in
+`StudentsPanel.tsx`'s per-student Lessons dialog (A's lessons under B's title, with Delete acting on
+A's) and `ReportsPanel.tsx` (click "This Year" then "This Month"; whichever resolves last wins).
+Relatedly, the membership dialog's effect resets its forms but never clears `membership` /
+`paymentHistory`, so a failed fetch for the newly-opened student shows the previous student's figures
+under the new name.
+
+### Deleting a completed lesson takes one click with no confirmation
+`useLessonDelete.ts` only opens a modal when the lesson is part of a recurring series; a one-off goes
+straight to `api.lessons.delete`, and `lessons.ts` does an unguarded delete. The button is a plain
+always-visible "Delete" on every schedule row. So scrolling back to check who attended last month and
+mis-clicking destroys an attendance record instantly, with no dialog and no undo. That's inconsistent
+with the rest of the codebase, which deliberately protects real outcomes —
+`deleteRecurringSeriesFrom` and `deleteInstructor` both exclude `completed`/`no_show`. The comment in
+that hook argues one-off deletes are "routine, low-stakes"; that's true for a future booking and false
+for a past one, so the split should probably be on whether the lesson has happened, not on whether
+it's recurring.
+
+### The POS cart holds a price snapshot the server doesn't use
+`PosPanel.tsx` cart lines hold a `PosItem` captured at add-to-cart time, and `refresh()` replaces
+`items` without reconciling `cart`. Edit an item's price in Manage Items while it's in the cart and
+check out: the cart and the "Sale completed — $X" toast show the old price while the server correctly
+snapshots and records the new one, so staff quote and collect the wrong amount and Recent Sales
+immediately contradicts the toast. The server side is right — totals are always recomputed from the
+catalog and `PosSaleInput` carries no total field — so this is purely about reconciling or invalidating
+the cart when the catalog changes.
+
+### Highest-risk untested logic
+Coverage is good where it exists (membership billing math, recurring-series dates, the student
+archive/delete path, restore validation) but concentrated there. Ranked by likelihood x cost:
+`electron/ipc/pos.ts` has zero tests despite being all money, and is already refactored into exported
+functions so tests are nearly free — assert that a sale keeps its snapshotted price after the catalog
+is repriced, that an unknown `itemId` throws, that `assertValidSaleInput` rejects empty carts and
+non-integer quantities, and that `deletePosItem` archives on FK violation. `computeReport` in
+`reports.ts` has zero tests and classic date-boundary risk — assert a payment at 23:59 on `endDate` is
+included and one the next day isn't, and that `buildCsv`'s combined total honours the
+`includeMembership`/`includePos` flags, which is the one place CSV output can silently disagree with
+the screen. Then `assertNoOverlap` in `lessons.ts` (`excludeLessonId` self-conflict, cancelled lessons
+not blocking, back-to-back lessons where `end === next start`) and the `lessons:update` merge
+semantics where an absent key means "keep" and an explicit `null` means "clear".
+`reconfigureAutoBackup` is pure `setInterval` logic that `vi.useFakeTimers()` covers trivially, and
+silent backup loss is this app's worst failure mode. Cheapest real win: extract `buildScheduleRows`
+from `SchedulePanel.tsx` into `src/lib/` and test the gap computation (cancelled lesson doesn't consume
+its slot, lesson running past closing time, overlapping lessons) — it needs no renderer test infra and
+runs under the existing node-environment vitest config.
+
+### Recurring series edge cases
+Three separate small bugs in `electron/ipc/recurringSeries.ts`. `generatedUntil` is advanced
+unconditionally, including on the path that *skips* an occurrence because of a conflict, so a week
+skipped for a double-booking is never retried on any later startup — that lesson silently never
+exists. A series whose first occurrence is beyond the 12-week rolling horizon generates no dates, so
+`combineDateAndTime(undefined, ...)` produces an Invalid Date and the user gets a cryptic Prisma
+validation error instead of "you can't schedule a series that far out". And because occurrences are
+generated from `startDate` forward, a back-dated series inserts past `scheduled` lessons that count
+against the current period's included private lessons, silently spending a paid allowance.
+
+### Smaller correctness and consistency items
+Grouped because none is worth its own entry. `EMPTY_ASSIGN_FORM` in `StudentMembershipDialog.tsx`
+evaluates `todayIso()` once at module load, so on a front-desk machine left running for days the
+default membership start date — the billing anchor — is stale; `StudentsPanel` already recomputes
+this at open time. Money inputs accept values above the 32-bit `Int` columns, so a fat-fingered price
+surfaces a raw Prisma overflow message in a toast. Server-side validation is absent from half the IPC
+handlers: `lessons.ts`, `pos.ts` and `memberships.ts` have `assertValid*` guards, while
+`students.ts`, `instructors.ts`, `familyMembers.ts`, `businessHours.ts` and `settings.ts` have none —
+`students:create` accepts an empty `firstName` and `businessHours:update` accepts a close time before
+the open time, which then makes the Schedule availability grid silently render nothing for that day.
+`normalizeMethod` in `reports.ts` hardcodes `'cash'|'card'|'check'` instead of deriving from the
+`PAYMENT_METHODS` constant it already imports, so a fifth method would zero-fill correctly but never
+receive rows. `SchedulePanel.tsx` and `CertificatesPanel.tsx` still define local `todayIsoDate()` /
+`dateToIso()` helpers byte-identical to the ones in `src/lib/isoDate.ts` — whose own header comment
+points back at SchedulePanel as the convention it was extracted from, so the extraction happened but
+the call sites were never migrated. `HelpPanel.tsx` claims a deleted student's "past lessons and
+certificates stay intact", but there is no certificate persistence anywhere — certificates are
+generated to a temp file and never recorded — so "and certificates" should go. Finally, some Vite
+template leftovers still ship: `main.ts` sends a `main-process-message` nothing listens for and has
+the one commented-out line in the repo, `index.html` still uses the default `/vite.svg` favicon, and
+`public/electron-vite.svg` / `electron-vite.animate.svg` are referenced nowhere but get copied into
+the packaged app.
+
 ## Done
 
 ### Membership billing no longer re-bills the past
