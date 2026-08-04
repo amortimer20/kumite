@@ -1,8 +1,8 @@
 // Local-calendar-date <-> ISO instant helpers. Plain `new Date("yyyy-mm-dd")`
 // parses as UTC midnight, which can land on the wrong calendar day once
 // converted back to local time — these compensate so a date picked in the UI
-// round-trips to the same calendar day, matching the convention already used
-// in SchedulePanel.
+// round-trips to the same calendar day. This is the single source for that
+// convention; panels import from here rather than defining their own copies.
 
 export function todayIso() {
   return dateToIso(new Date())

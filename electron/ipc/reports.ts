@@ -15,10 +15,13 @@ import type {
 // PosSale.paymentMethod which is already constrained to PAYMENT_METHODS) —
 // normalize case-insensitively; anything unrecognized (including
 // null/empty) buckets into "other".
-function normalizeMethod(method: string | null): PaymentMethod {
+//
+// Matched against PAYMENT_METHODS rather than a hardcoded list, so adding a
+// fifth method can't leave this silently routing every one of its rows into
+// "other" while emptyByMethod() dutifully renders an always-zero row for it.
+export function normalizeMethod(method: string | null): PaymentMethod {
   const m = method?.trim().toLowerCase()
-  if (m === 'cash' || m === 'card' || m === 'check') return m
-  return 'other'
+  return PAYMENT_METHODS.find((known) => known === m) ?? 'other'
 }
 
 function emptyByMethod(): ReportMethodBreakdown[] {

@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { getErrorMessage } from '@/lib/errors'
+import { todayIso } from '@/lib/isoDate'
 import {
   Select,
   SelectContent,
@@ -15,12 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-
-function todayIsoDate() {
-  const now = new Date()
-  const offsetMs = now.getTimezoneOffset() * 60_000
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10)
-}
 
 interface PersonOption {
   id: string
@@ -48,7 +43,7 @@ export function CertificatesPanel() {
   const [personId, setPersonId] = useState('self')
   const [certificateType, setCertificateType] = useState<CertificateType>('regular')
   const [rank, setRank] = useState<string | undefined>(undefined)
-  const [date, setDate] = useState(todayIsoDate())
+  const [date, setDate] = useState(todayIso())
 
   const [printing, setPrinting] = useState(false)
   const [error, setError] = useState<string | null>(null)

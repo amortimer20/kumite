@@ -8,6 +8,7 @@ import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { useLessonDelete } from '@/hooks/useLessonDelete'
 import { getErrorMessage } from '@/lib/errors'
+import { dateToIso, todayIso } from '@/lib/isoDate'
 import { STATUS_LABEL } from '@/lib/lessonStatus'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
@@ -31,19 +32,10 @@ import {
 } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
-function todayIsoDate() {
-  const now = new Date()
-  const offsetMs = now.getTimezoneOffset() * 60_000
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10)
-}
-
+// Kept local: returns a Date for the calendar's `selected` prop, whereas
+// isoDate.ts's helpers all deal in "yyyy-mm-dd" strings.
 function isoToDate(iso: string) {
   return new Date(`${iso}T00:00:00`)
-}
-
-function dateToIso(d: Date) {
-  const offsetMs = d.getTimezoneOffset() * 60_000
-  return new Date(d.getTime() - offsetMs).toISOString().slice(0, 10)
 }
 
 function dayBounds(isoDate: string) {
@@ -92,7 +84,7 @@ function buildScheduleRows(dayStart: Date, dayEnd: Date, lessons: Lesson[]): Sch
 }
 
 export function SchedulePanel() {
-  const [date, setDate] = useState(todayIsoDate())
+  const [date, setDate] = useState(todayIso())
   const [lessons, setLessons] = useState<Lesson[]>([])
   // The date `lessons` was actually fetched for — kept separate from `date`
   // so a date change doesn't plot stale lessons against the new day's grid
