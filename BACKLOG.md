@@ -146,19 +146,18 @@ The data-loss/startup blockers and the money-correctness findings from that revi
 Done). These are the rest, kept in one place so they don't get lost. Roughly in the order worth
 tackling.
 
-### The renderer has no error boundary, and most failures are silent
-There is no `ErrorBoundary` and no `unhandledrejection` handler anywhere in `src/`, so a render-time
-throw blanks the whole window with no reload path. Separately, most mutating `api.*` calls still have
-no `try/catch`: the established convention is `catch (err) { toast.error(getErrorMessage(err)) }`, and
-every `onSubmit` follows it, but most non-submit handlers don't — a failed IPC call is then an
-unhandled rejection with zero user feedback, i.e. the click just appears to do nothing.
-`src/hooks/useLessonDelete.ts` is the only file that calls `api.*` without even importing
-`getErrorMessage`. Worth doing in the same pass: `SettingsPanel.tsx`'s business-hours handler updates
-state optimistically and then awaits with no catch, so a failed write leaves the UI displaying a value
-the database never took. Also every *initial* fetch is uncaught, which is worse than it sounds —
-`DashboardPanel.tsx` clears `loading` in `.finally`, so if its three parallel calls reject the
-dashboard confidently renders "0 Active students", "$0.00 Collected this month" and "All memberships
-are up to date." A generic "couldn't load" state would be a big improvement over that.
+### Most api.* failures are still silent
+There is no `unhandledrejection` handler, and most mutating `api.*` calls have no `try/catch`. The
+established convention is `catch (err) { toast.error(getErrorMessage(err)) }` and every `onSubmit`
+follows it, but most non-submit handlers don't — so a failed IPC call is an unhandled rejection with no
+user feedback, i.e. the click appears to do nothing. `src/hooks/useLessonDelete.ts` is the only file
+that calls `api.*` without even importing `getErrorMessage`. Worth doing in the same pass:
+`SettingsPanel.tsx`'s business-hours handler updates state optimistically then awaits with no catch, so
+a failed write leaves the UI showing a value the database never took. Also every *initial* fetch is
+uncaught, which is worse than it sounds — `DashboardPanel.tsx` clears `loading` in `.finally`, so if its
+three parallel calls reject the dashboard confidently renders "0 Active students", "$0.00 Collected this
+month" and "All memberships are up to date." A generic "couldn't load" state would be a big improvement.
+(The error boundary half of this entry is done — see Done.)
 
 ### Automatic backups fail invisibly, and a partial write looks like a valid backup
 Two gaps beyond the retention item above, both in `electron/autoBackup.ts`. First, every failure is
@@ -286,6 +285,22 @@ the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg` f
 removed.)
 
 ## Done
+
+### Error boundary so a crash can't blank the window
+A render-time throw used to take out the whole window with no message and no way back — the worst
+failure mode at a front desk, because it's indistinguishable from the app being broken beyond use.
+`src/components/ErrorBoundary.tsx` now catches it and shows what went wrong, the error text to pass on,
+and a Reload button.
+
+Used in two places for different reasons. In `App.tsx` it wraps the panel area with `key={tab}`, so the
+boundary remounts when the user switches tabs: a crash in one panel leaves the navigation working and
+moving to another tab clears it, no reload needed. In `main.tsx` it wraps the whole app as a last
+resort, for a crash in the shell itself where there is no surviving navigation to escape through.
+
+Verified by temporarily making a panel throw, rather than trusting that it compiles: the boundary caught
+it, the scoped wording named the Dashboard, the navigation stayed usable, and switching to Schedule
+rendered normally. A class component because `componentDidCatch` has no hook equivalent, and it still
+logs the component stack to the console, which is the only diagnostic available in a packaged build.
 
 ### Restore safety copies are surfaced in the UI
 Restoring a backup renames the outgoing database to `<name>.pre-restore-<epoch>` rather than

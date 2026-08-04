@@ -10,6 +10,7 @@ import { CertificatesPanel } from './components/CertificatesPanel'
 import { PosPanel } from './components/PosPanel'
 import { ReportsPanel } from './components/ReportsPanel'
 import { HelpPanel } from './components/HelpPanel'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -62,14 +63,19 @@ function App() {
           </Tooltip>
         </header>
         <main>
-          {tab === 'Dashboard' && <DashboardPanel />}
-          {tab === 'Schedule' && <SchedulePanel />}
-          {tab === 'Students' && <StudentsPanel />}
-          {tab === 'Instructors' && <InstructorsPanel />}
-          {tab === 'Certificates' && <CertificatesPanel />}
-          {tab === 'POS' && <PosPanel />}
-          {tab === 'Reports' && <ReportsPanel />}
-          {tab === 'Settings' && <SettingsPanel />}
+          {/* Keyed by tab so the boundary remounts (and clears any caught
+              error) when the user switches tabs — a crash in one panel leaves
+              the rest of the app usable instead of needing a reload. */}
+          <ErrorBoundary key={tab} scope={tab}>
+            {tab === 'Dashboard' && <DashboardPanel />}
+            {tab === 'Schedule' && <SchedulePanel />}
+            {tab === 'Students' && <StudentsPanel />}
+            {tab === 'Instructors' && <InstructorsPanel />}
+            {tab === 'Certificates' && <CertificatesPanel />}
+            {tab === 'POS' && <PosPanel />}
+            {tab === 'Reports' && <ReportsPanel />}
+            {tab === 'Settings' && <SettingsPanel />}
+          </ErrorBoundary>
         </main>
         <Toaster />
         <HelpPanel open={helpOpen} onOpenChange={setHelpOpen} />
