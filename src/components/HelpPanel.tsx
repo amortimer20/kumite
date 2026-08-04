@@ -103,6 +103,11 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   (click to edit). Deleting a lesson that's part of a recurring series asks whether to
                   delete just that one lesson or it and every future one in the series.
                 </p>
+                <p>
+                  Deleting an upcoming lesson happens straight away, but deleting one that has already
+                  taken place asks you to confirm first — that record is attendance history, and there's
+                  no undo.
+                </p>
               </div>
             )}
             {section === 'students' && (

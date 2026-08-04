@@ -213,17 +213,6 @@ Relatedly, the membership dialog's effect resets its forms but never clears `mem
 `paymentHistory`, so a failed fetch for the newly-opened student shows the previous student's figures
 under the new name.
 
-### Deleting a completed lesson takes one click with no confirmation
-`useLessonDelete.ts` only opens a modal when the lesson is part of a recurring series; a one-off goes
-straight to `api.lessons.delete`, and `lessons.ts` does an unguarded delete. The button is a plain
-always-visible "Delete" on every schedule row. So scrolling back to check who attended last month and
-mis-clicking destroys an attendance record instantly, with no dialog and no undo. That's inconsistent
-with the rest of the codebase, which deliberately protects real outcomes —
-`deleteRecurringSeriesFrom` and `deleteInstructor` both exclude `completed`/`no_show`. The comment in
-that hook argues one-off deletes are "routine, low-stakes"; that's true for a future booking and false
-for a past one, so the split should probably be on whether the lesson has happened, not on whether
-it's recurring.
-
 ### The POS cart holds a price snapshot the server doesn't use
 `PosPanel.tsx` cart lines hold a `PosItem` captured at add-to-cart time, and `refresh()` replaces
 `items` without reconciling `cart`. Edit an item's price in Manage Items while it's in the cart and
@@ -285,6 +274,23 @@ the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg` f
 removed.)
 
 ## Done
+
+### Confirm before deleting a lesson that already happened
+Deleting a one-off lesson went straight through with no dialog, so scrolling the schedule back to check
+who attended and mis-clicking Delete destroyed an attendance record instantly, with no undo. The rest of
+the codebase deliberately protects real outcomes — `deleteRecurringSeriesFrom` and `deleteInstructor`
+both exclude `completed`/`no_show` — so this was the one path that didn't.
+
+The old comment argued one-off deletes are "routine, low-stakes"; that's true of a future booking and
+false of a past one, so the split is now on **whether the lesson has happened**, not on whether it's
+recurring. `lessonHasHappened` in `src/lib/lessonStatus.ts` is a pure predicate with tests: `completed`
+and `no_show` count as happened regardless of the stored time (the status is a statement that it did),
+and everything else falls back to whether the start time has passed — which matters because staff
+routinely forget to mark attendance, so a week-old lesson still sitting at "scheduled" is history too.
+
+Also wrapped this hook's two `api.*` calls in the standard `getErrorMessage` + toast handling while
+there. It was the only file in the app calling `api.*` without even importing `getErrorMessage`, and a
+delete that silently fails is exactly the wrong place to leave that.
 
 ### Error boundary so a crash can't blank the window
 A render-time throw used to take out the whole window with no message and no way back — the worst
