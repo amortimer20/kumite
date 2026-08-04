@@ -443,6 +443,12 @@ export function SettingsPanel() {
                 Export a backup file to keep a copy of your data — for example in a synced folder like
                 OneDrive or Dropbox. Restoring loads a backup file back in, replacing all current data.
               </p>
+              <p className="mb-3 text-sm text-muted-foreground">
+                Restoring keeps your previous data as a safety copy rather than overwriting it. It's saved
+                next to the database, with a name ending in <code>.pre-restore-</code> and a number — see
+                the About section for the folder. If a restore turns out to be the wrong one, that file is
+                how it gets undone.
+              </p>
               <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={handleBackup} disabled={restoring}>
                   Export Backup

@@ -173,12 +173,6 @@ to mistake for a good one. (Restore now validates the file it's given, so a bad 
 caught at restore time rather than bricking the app — but it's still a backup the studio thought they
 had and don't.)
 
-### Restore safety copies are never surfaced anywhere
-`electron/db.ts` renames the outgoing database to `<name>.pre-restore-<epoch>` before swapping in a
-restore. That file is the only undo for a bad restore, it is never pruned, and nothing in the UI
-mentions that it exists or where to find it — `HelpPanel.tsx` describes Restore without it. The fatal
-startup dialog now names the folder, but that only helps when startup actually fails.
-
 ### The installer still ships bundled libraries a second time
 Partly addressed: moving the build-only packages to `devDependencies` and cleaning `dist-electron`
 between builds took `app.asar` from 243 MB to 81 MB and the DMG from 160 MB to 128 MB. What remains is
@@ -292,6 +286,15 @@ the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg` f
 removed.)
 
 ## Done
+
+### Restore safety copies are surfaced in the UI
+Restoring a backup renames the outgoing database to `<name>.pre-restore-<epoch>` rather than
+overwriting it, which makes it the only way to undo a restore of the wrong file — but nothing in the
+app said it existed. Settings > Backup & Restore now explains it above the buttons, pointing at the
+About section for the folder, and the Help panel's Settings section says the same plus "don't delete it
+until you're sure the restore was right." Copy only; the mechanism already worked. Pruning those files
+is still not handled, and is deliberately left alone — they're small relative to the risk, and
+automatically deleting the one available undo would defeat the point.
 
 ### A real README
 Replaced the unmodified Vite starter template with actual documentation: what the app is, the setup

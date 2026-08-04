@@ -209,7 +209,10 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   <strong>Backup &amp; Restore</strong> lets you export or restore a backup file manually,
                   and also configure automatic backups to a folder of your choice on a schedule.
                   Restoring only accepts a genuine Kumite backup — anything else is refused before
-                  it can replace your data.
+                  it can replace your data. Your previous data isn't overwritten either: it's kept as a
+                  safety copy next to the database, named with <strong>.pre-restore-</strong> and a
+                  number, in the folder shown under About. That file is how a wrong restore gets undone,
+                  so don't delete it until you're sure the restore was right.
                 </p>
                 <p>
                   <strong>Backups to keep</strong> controls how many automatic backups are kept in that
