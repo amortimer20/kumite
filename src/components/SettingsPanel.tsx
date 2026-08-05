@@ -342,44 +342,56 @@ export function SettingsPanel() {
                 Billing plans students can be assigned to (e.g. "2 Private, Unlimited Group"). The title is
                 descriptive — the app only tracks the private-lesson allowance, not group class attendance.
               </p>
-              <form className="mb-4 flex flex-wrap items-center gap-2" onSubmit={handleAddPlan}>
-                <Input
-                  className="w-56"
-                  placeholder="Title"
-                  value={addPlanForm.title}
-                  onChange={(e) => setAddPlanForm((f) => ({ ...f, title: e.target.value }))}
-                />
-                <Select
-                  key={addPlanFormKey}
-                  value={addPlanForm.billingFrequency}
-                  onValueChange={(v) => setAddPlanForm((f) => ({ ...f, billingFrequency: v as MembershipBillingFrequency }))}
-                >
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MEMBERSHIP_BILLING_FREQUENCIES.map((freq) => (
-                      <SelectItem key={freq} value={freq}>{FREQUENCY_LABEL[freq]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  className="w-28"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="Price"
-                  value={addPlanForm.price}
-                  onChange={(e) => setAddPlanForm((f) => ({ ...f, price: e.target.value }))}
-                />
-                <Input
-                  className="w-24"
-                  type="number"
-                  min="0"
-                  placeholder="# Privates"
-                  value={addPlanForm.includedPrivateLessons}
-                  onChange={(e) => setAddPlanForm((f) => ({ ...f, includedPrivateLessons: e.target.value }))}
-                />
+              <form className="mb-4 flex flex-wrap items-end gap-2" onSubmit={handleAddPlan}>
+                <div>
+                  <Label className="mb-1">Title</Label>
+                  <Input
+                    className="w-56"
+                    placeholder="e.g. 2 Private, Unlimited Group"
+                    value={addPlanForm.title}
+                    onChange={(e) => setAddPlanForm((f) => ({ ...f, title: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label className="mb-1">Billing frequency</Label>
+                  <Select
+                    key={addPlanFormKey}
+                    value={addPlanForm.billingFrequency}
+                    onValueChange={(v) => setAddPlanForm((f) => ({ ...f, billingFrequency: v as MembershipBillingFrequency }))}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MEMBERSHIP_BILLING_FREQUENCIES.map((freq) => (
+                        <SelectItem key={freq} value={freq}>{FREQUENCY_LABEL[freq]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="mb-1">Price</Label>
+                  <Input
+                    className="w-28"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={addPlanForm.price}
+                    onChange={(e) => setAddPlanForm((f) => ({ ...f, price: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  {/* Labelled because this field defaults to 0, which hides any
+                      placeholder — a bare "0" gave staff no idea what it meant. */}
+                  <Label className="mb-1">Private lessons</Label>
+                  <Input
+                    className="w-28"
+                    type="number"
+                    min="0"
+                    value={addPlanForm.includedPrivateLessons}
+                    onChange={(e) => setAddPlanForm((f) => ({ ...f, includedPrivateLessons: e.target.value }))}
+                  />
+                </div>
                 <Button type="submit" disabled={addingPlan}>Add Plan</Button>
               </form>
               {addPlanError && <p className="mb-4 text-sm text-destructive">{addPlanError}</p>}
@@ -624,7 +636,7 @@ export function SettingsPanel() {
                 />
               </div>
               <div className="w-28">
-                <Label className="mb-1"># Privates</Label>
+                <Label className="mb-1">Private lessons</Label>
                 <Input
                   type="number"
                   min="0"
