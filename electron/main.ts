@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { armStartupWatchdog } from './startupWatchdog.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -114,7 +115,31 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled promise rejection in the main process:', reason)
 })
 
+// How long to wait for startup to finish before assuming the app has wedged.
+// A clean start migrates and registers handlers in ~1s, so 30s is ~30x the
+// normal path — generous enough never to trip on a slow or antivirus-throttled
+// machine, short enough that no one stares at a dead window for long.
+const STARTUP_TIMEOUT_MS = 30_000
+
 function start() {
+  // Armed before whenReady() on purpose — see startupWatchdog.ts. If startup
+  // never completes (the SingletonLock race that motivated this), this is the
+  // only thing that turns an indefinite silent hang into a message and an exit.
+  const disarmWatchdog = armStartupWatchdog({
+    timeoutMs: STARTUP_TIMEOUT_MS,
+    isComplete: () => startupComplete,
+    onTimeout: () => {
+      dialog.showErrorBox(
+        'Kumite is taking too long to start',
+        'Kumite could not finish starting up and will now close.\n\n' +
+          'Your data has not been changed. Please try opening it again — this ' +
+          'usually clears on the next launch.\n\n' +
+          'If it keeps happening, send this message to whoever set up Kumite for you.',
+      )
+      app.exit(1)
+    },
+  })
+
   app.on('second-instance', () => {
     if (!win) return
     if (win.isMinimized()) win.restore()
@@ -125,6 +150,7 @@ function start() {
     try {
       await loadDatabaseAndHandlers()
       startupComplete = true
+      disarmWatchdog()
     } catch (err) {
       reportFatalError(err)
       app.exit(1)
