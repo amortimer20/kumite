@@ -31,6 +31,13 @@ export function formatCents(cents: number) {
   return `$${(cents / 100).toFixed(2)}`
 }
 
+// The largest value a Prisma `Int` column holds — a signed 32-bit integer.
+// Every money amount (cents) and count in the app is stored as `Int`, so a
+// value past this overflows on write and surfaces a raw Prisma error in a
+// toast instead of a friendly "that price is too large". As cents this is
+// ~$21.4M, comfortably above any real price or dues amount.
+export const MAX_INT_COLUMN = 2_147_483_647
+
 export function dollarsToCents(value: string) {
   const parsed = Number.parseFloat(value)
   return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0
@@ -46,13 +53,19 @@ export function parsePriceToCents(value: string): number | null {
   if (!trimmed) return null
   const parsed = Number.parseFloat(trimmed)
   if (!Number.isFinite(parsed) || parsed < 0) return null
-  return Math.round(parsed * 100)
+  const cents = Math.round(parsed * 100)
+  // A fat-fingered amount past the Int column's ceiling is rejected here rather
+  // than left to overflow into a raw Prisma error downstream.
+  if (cents > MAX_INT_COLUMN) return null
+  return cents
 }
 
 // Number.parseInt(...) || 0 alone would let a real negative integer (e.g.
 // "-2") through unchanged, since it's truthy — this clamps it to 0 instead.
+// Clamped at the top end too, so a huge count can't overflow the Int column.
 export function clampNonNegativeInt(value: string) {
   const parsed = Number.parseInt(value, 10)
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0
+  if (!Number.isFinite(parsed)) return 0
+  return Math.min(MAX_INT_COLUMN, Math.max(0, parsed))
 }
 

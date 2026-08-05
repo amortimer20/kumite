@@ -246,27 +246,33 @@ against the current period's included private lessons, silently spending a paid 
 Grouped because none is worth its own entry. `EMPTY_ASSIGN_FORM` in `StudentMembershipDialog.tsx`
 evaluates `todayIso()` once at module load, so on a front-desk machine left running for days the
 default membership start date — the billing anchor — is stale; `StudentsPanel` already recomputes
-this at open time. Money inputs accept values above the 32-bit `Int` columns, so a fat-fingered price
-surfaces a raw Prisma overflow message in a toast. Server-side validation is absent from half the IPC
-handlers: `lessons.ts`, `pos.ts` and `memberships.ts` have `assertValid*` guards, while
-`students.ts`, `instructors.ts`, `familyMembers.ts`, `businessHours.ts` and `settings.ts` have none —
-`students:create` accepts an empty `firstName` and `businessHours:update` accepts a close time before
-the open time, which then makes the Schedule availability grid silently render nothing for that day.
-`normalizeMethod` in `reports.ts` hardcodes `'cash'|'card'|'check'` instead of deriving from the
-`PAYMENT_METHODS` constant it already imports, so a fifth method would zero-fill correctly but never
-receive rows. `SchedulePanel.tsx` and `CertificatesPanel.tsx` still define local `todayIsoDate()` /
-`dateToIso()` helpers byte-identical to the ones in `src/lib/isoDate.ts` — whose own header comment
-points back at SchedulePanel as the convention it was extracted from, so the extraction happened but
-the call sites were never migrated. And `HelpPanel.tsx` claims a deleted student's "past lessons and
-certificates stay intact", but there is no certificate persistence anywhere — certificates are
-generated to a temp file and never recorded — so "and certificates" should go. (The Vite template
-leftovers that used to be listed here — the dead `main-process-message`, the one commented-out line,
-the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg` files — are all
-removed.)
+this at open time. (This one is folded into the non-traditional-fees work above, which defaults the
+assign start date to the 1st, so it'll be fixed there rather than on its own.) Server-side validation
+is absent from half the IPC handlers: `lessons.ts`, `pos.ts` and `memberships.ts` have `assertValid*`
+guards, while `students.ts`, `instructors.ts`, `familyMembers.ts`, `businessHours.ts` and
+`settings.ts` have none — `students:create` accepts an empty `firstName` and `businessHours:update`
+accepts a close time before the open time, which then makes the Schedule availability grid silently
+render nothing for that day. (Several items that used to be listed here are now done — see "Money
+inputs can no longer overflow the Int columns" in Done for the fat-fingered-price fix, and the
+`normalizeMethod`, duplicated-`isoDate`-helper and stale-`HelpPanel`-certificates-claim items were all
+resolved in earlier passes. The Vite template leftovers — the dead `main-process-message`, the one
+commented-out line, the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg`
+files — are all removed too.)
 
 ## Done
 
-### POS cart no longer quotes a price the sale won't use
+### Money inputs can no longer overflow the Int columns
+Every price and count in the app is stored as a Prisma `Int` — a signed 32-bit integer, max
+2,147,483,647. A fat-fingered amount past that ceiling used to reach the database and surface a raw
+Prisma overflow message in a toast, which reads as a broken app rather than "that number's too big."
+The guard now lives in the two shared parse helpers in `src/lib/membershipFormat.ts`, so it covers
+every money-input site at once: `parsePriceToCents` (plan price, catalog item price, custom membership
+price override, and payment amount) returns `null` above the ceiling, which every caller already
+turns into its existing inline "enter a valid price" validation message — so no new UI code was
+needed. `clampNonNegativeInt` (a plan's included-lessons count) now clamps at the top end as well as
+the bottom, symmetric with its existing floor at 0. A shared `MAX_INT_COLUMN` constant documents the
+limit in one place. Six unit tests cover the ceiling on both helpers, including the exactly-at-limit
+boundary.
 Cart lines hold a snapshot of the catalog item taken at add-to-cart time, but checkout re-reads the
 catalog server-side and snapshots the price there. So editing an item from Manage Items while it sat in
 the cart left the running total — and the "Sale completed — $X" toast — showing a figure the recorded

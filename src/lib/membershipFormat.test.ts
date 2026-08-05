@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dollarsToCents, parsePriceToCents } from './membershipFormat'
+import { MAX_INT_COLUMN, clampNonNegativeInt, dollarsToCents, parsePriceToCents } from './membershipFormat'
 
 describe('parsePriceToCents', () => {
   it('parses a normal price', () => {
@@ -48,5 +48,38 @@ describe('parsePriceToCents', () => {
 
   it('tolerates surrounding whitespace', () => {
     expect(parsePriceToCents('  25.50  ')).toBe(2550)
+  })
+
+  // A fat-fingered amount past the Int column's ceiling would otherwise reach
+  // Prisma and surface a raw overflow message in a toast. Rejected as null
+  // here, so it lands in the same "invalid price" path as blanks and negatives.
+  it('returns null for an amount past the Int column ceiling', () => {
+    // MAX_INT_COLUMN is in cents; feed dollars just over it.
+    const justOverDollars = (MAX_INT_COLUMN / 100 + 1).toString()
+    expect(parsePriceToCents(justOverDollars)).toBeNull()
+    expect(parsePriceToCents('99999999')).toBeNull()
+  })
+
+  it('accepts an amount exactly at the ceiling', () => {
+    expect(parsePriceToCents((MAX_INT_COLUMN / 100).toFixed(2))).toBe(MAX_INT_COLUMN)
+  })
+})
+
+describe('clampNonNegativeInt', () => {
+  it('parses a normal count', () => {
+    expect(clampNonNegativeInt('4')).toBe(4)
+  })
+
+  it('clamps a negative to 0', () => {
+    expect(clampNonNegativeInt('-2')).toBe(0)
+  })
+
+  it('treats an unparseable value as 0', () => {
+    expect(clampNonNegativeInt('abc')).toBe(0)
+    expect(clampNonNegativeInt('')).toBe(0)
+  })
+
+  it('clamps a count past the Int column ceiling', () => {
+    expect(clampNonNegativeInt('9999999999')).toBe(MAX_INT_COLUMN)
   })
 })
