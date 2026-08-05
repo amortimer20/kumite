@@ -38,7 +38,7 @@ function App() {
       <div className="app">
         <header className="app-header">
           <h1>Kumite</h1>
-          <nav className="flex flex-wrap gap-2">
+          <nav className="flex flex-wrap items-center gap-2">
             {TABS.map((t) => {
               const Icon = TAB_ICONS[t]
               return (
@@ -52,15 +52,18 @@ function App() {
                 </Button>
               )
             })}
+            {/* Help lives at the end of the nav (not as a separate header child)
+                so it flows and wraps with the tab buttons instead of dropping to
+                a row of its own. Icon-only to stay compact next to the tabs. */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => setHelpOpen(true)} aria-label="Help">
+                  <HelpCircle />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Help</TooltipContent>
+            </Tooltip>
           </nav>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="ml-auto" onClick={() => setHelpOpen(true)} aria-label="Help">
-                <HelpCircle />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Help</TooltipContent>
-          </Tooltip>
         </header>
         <main>
           {/* Keyed by tab so the boundary remounts (and clears any caught
