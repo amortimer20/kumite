@@ -244,6 +244,22 @@ files — are all removed too.)
 
 ## Done
 
+### Payment history filters to a recent window by default
+A student's payment history spans every membership they've ever had and only grows, so an established
+student's list became a long scroll to eyeball recent activity. The Membership window's payment-history
+table now defaults to the **last 12 months**, with a dropdown to switch to the last 90 days or all
+time, and a "Showing 3 of 20" counter so a filtered view can never be mistaken for lost data (when the
+range covers everything it just reads "20 payments"). An empty window says so and points at choosing a
+wider range, rather than looking like the student has no history.
+
+Default is 12 months rather than the 90 days first floated, because 90 days is only ~3 rows for the
+common monthly cadence and reads as "where did it all go?"; a year is bounded but rarely empty. Kept
+client-side — all payments are already fetched, and even weekly billing over years is only a few
+hundred rows, so backend pagination wasn't worth its complexity. The date-window logic is a pure
+`filterPaymentsByRange` in `src/lib/paymentHistoryFilter.ts` with 8 tests covering the cutoffs and the
+inclusive boundary (a payment dated exactly at the cutoff is kept). HelpPanel's Students section
+documents the filter.
+
 ### Startup watchdog so a wedged launch can't hang silently forever
 This began as a "watch item": once, while verifying the packaged mac build right after the
 single-instance lock went in, the app printed Chromium singleton errors (`write() failed: Broken pipe`,

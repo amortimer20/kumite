@@ -13,6 +13,12 @@ import {
   parsePriceToCents,
 } from '@/lib/membershipFormat'
 import { isoDateToInstant, todayIso } from '@/lib/isoDate'
+import {
+  DEFAULT_PAYMENT_HISTORY_RANGE,
+  PAYMENT_HISTORY_RANGES,
+  PAYMENT_HISTORY_RANGE_LABEL,
+  filterPaymentsByRange,
+} from '@/lib/paymentHistoryFilter'
 import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -54,6 +60,7 @@ export function StudentMembershipDialog({
   const [membership, setMembership] = useState<StudentMembership | null>(null)
   const [plans, setPlans] = useState<MembershipPlan[]>([])
   const [paymentHistory, setPaymentHistory] = useState<MembershipPaymentWithPlan[]>([])
+  const [historyRange, setHistoryRange] = useState(DEFAULT_PAYMENT_HISTORY_RANGE)
   const [loading, setLoading] = useState(true)
 
   const [assignForm, setAssignForm] = useState(EMPTY_ASSIGN_FORM)
@@ -115,6 +122,7 @@ export function StudentMembershipDialog({
     setPaymentError(null)
     setAdjustmentForm(EMPTY_ADJUSTMENT_FORM)
     setAdjustmentError(null)
+    setHistoryRange(DEFAULT_PAYMENT_HISTORY_RANGE)
     Promise.all([refresh(student.id), api.membershipPlans.list()])
       .then(([, allPlans]) => setPlans(allPlans.filter((p) => p.active)))
       .finally(() => setLoading(false))
@@ -271,6 +279,8 @@ export function StudentMembershipDialog({
   // selected at all, since it wouldn't be among the rendered options.
   const changePlanOptions =
     membership && !plans.some((p) => p.id === membership.planId) ? [...plans, membership.plan] : plans
+
+  const visiblePayments = filterPaymentsByRange(paymentHistory, historyRange)
 
   return (
     <Dialog open={student !== null} onOpenChange={onOpenChange}>
@@ -433,7 +443,28 @@ export function StudentMembershipDialog({
             )}
 
             <div className="border-t border-border pt-3">
-              <Label className="mb-2">Payment history</Label>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <Label>Payment history</Label>
+                {paymentHistory.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      {visiblePayments.length < paymentHistory.length
+                        ? `Showing ${visiblePayments.length} of ${paymentHistory.length}`
+                        : `${paymentHistory.length} payment${paymentHistory.length === 1 ? '' : 's'}`}
+                    </span>
+                    <Select value={historyRange} onValueChange={(v) => setHistoryRange(v as typeof historyRange)}>
+                      <SelectTrigger className="h-8 w-40">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAYMENT_HISTORY_RANGES.map((r) => (
+                          <SelectItem key={r} value={r}>{PAYMENT_HISTORY_RANGE_LABEL[r]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
               <div className="max-h-64 overflow-y-auto rounded-md border border-border">
                 <Table className="table-fixed">
                   <TableHeader>
@@ -451,8 +482,12 @@ export function StudentMembershipDialog({
                       <TableRow>
                         <TableCell colSpan={6} className="text-center italic text-muted-foreground">No payments recorded yet.</TableCell>
                       </TableRow>
+                    ) : visiblePayments.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center italic text-muted-foreground">No payments in this period. Choose a wider range to see older payments.</TableCell>
+                      </TableRow>
                     ) : (
-                      paymentHistory.map((payment) => (
+                      visiblePayments.map((payment) => (
                         <TableRow key={payment.id}>
                           <TableCell>{new Date(payment.paidOn).toLocaleDateString()}</TableCell>
                           <TableCell>{formatCents(payment.amountCents)}</TableCell>

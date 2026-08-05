@@ -126,6 +126,12 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   <strong> Delete</strong>.
                 </p>
                 <p>
+                  The Membership window's payment history shows the last 12 months by default; use the
+                  dropdown above it to switch to the last 90 days or all time. Nothing is ever deleted
+                  by filtering — the count beside it (&ldquo;Showing 3 of 20&rdquo;) shows how many are
+                  hidden by the current range.
+                </p>
+                <p>
                   Deleting a student who has lessons, a recurring series, or any membership history
                   archives them instead of deleting, so that history stays attached to them — you'll
                   be offered the choice.
