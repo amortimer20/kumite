@@ -96,7 +96,10 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                 </p>
                 <p>
                   Check <strong>Repeats weekly</strong> to create a recurring series. Intro lessons can't
-                  repeat — they're one-off by design.
+                  repeat — they're one-off by design. A series is booked about 12 weeks ahead and keeps
+                  extending automatically as time passes, so a start date more than 12 weeks out is
+                  declined. It always generates from today forward — picking an earlier start won't create
+                  lessons in the past, it just sets which weekday the series lands on.
                 </p>
                 <p>
                   Each row in the day's table supports inline status changes and inline notes editing

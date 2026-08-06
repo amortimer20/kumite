@@ -173,16 +173,6 @@ story rather than a bare rename. Best done before the studio has data worth movi
 (The `author`/`description` metadata and the 800x600 default window that used to be in this entry are
 both fixed.)
 
-### Recurring series edge cases
-Three separate small bugs in `electron/ipc/recurringSeries.ts`. `generatedUntil` is advanced
-unconditionally, including on the path that *skips* an occurrence because of a conflict, so a week
-skipped for a double-booking is never retried on any later startup — that lesson silently never
-exists. A series whose first occurrence is beyond the 12-week rolling horizon generates no dates, so
-`combineDateAndTime(undefined, ...)` produces an Invalid Date and the user gets a cryptic Prisma
-validation error instead of "you can't schedule a series that far out". And because occurrences are
-generated from `startDate` forward, a back-dated series inserts past `scheduled` lessons that count
-against the current period's included private lessons, silently spending a paid allowance.
-
 ### Smaller correctness and consistency items
 Grouped because none is worth its own entry. `EMPTY_ASSIGN_FORM` in `StudentMembershipDialog.tsx`
 evaluates `todayIso()` once at module load, so on a front-desk machine left running for days the
@@ -198,6 +188,32 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### Recurring series edge cases
+Three separate bugs in `electron/ipc/recurringSeries.ts`, all of which could silently lose or
+mis-create lessons. First, `extendAllActiveSeries` (the startup extender) advanced `generatedUntil`
+unconditionally, including on the path that *skips* a week for a conflict — so a week blocked by a
+one-off double-booking fell behind the high-water mark and was never retried on any later startup,
+even after the conflict was removed. It now advances the mark only across the leading run of settled
+weeks (created, already-generated, or in the past) and locks it at the first *future* week it has to
+skip, so that week is retried next startup while later weeks still generate in the meantime. An
+`existing`-lesson check was added so re-scanning already-generated weeks doesn't create duplicates or
+stall the mark on the series' own lessons.
+
+Second, `createRecurringSeries` threw a cryptic Prisma error when the start date was beyond the 12-week
+rolling window: no occurrences were generated, so `lastOccurrence` was undefined and
+`combineDateAndTime(undefined, …)` produced an Invalid Date. It now rejects up front with "that start
+date is too far ahead — recurring lessons can only be scheduled up to 12 weeks out."
+
+Third, a back-dated series generated occurrences from `startDate` forward including past weeks, which
+were inserted as `scheduled` lessons that count against the student's included private lessons for the
+current period — silently spending a paid allowance. Creation now keeps the weekly cadence anchored on
+the start date but only materialises occurrences from today forward, and the same "never create a past
+week" guard was added to the startup extender for the case where `generatedUntil` is left stale by the
+app being closed for a while. Four integration tests in `recurringSeries.test.ts` cover the
+retry-after-conflict-clears path (including no duplicates on the second run), the too-far-ahead
+rejection, the back-dated skip, and the stale-`generatedUntil` past guard. HelpPanel's Schedule section
+now notes the 12-week window and the today-forward behaviour. 190 tests pass.
 
 ### Stale-response races in three dialogs
 `SchedulePanel.tsx` already guarded its lessons fetch with a `lessonsRequestIdRef` counter — bumped per

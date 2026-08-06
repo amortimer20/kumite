@@ -27,7 +27,20 @@ export async function createRecurringSeries(input: RecurringSeriesInput) {
 
   const dayOfWeek = new Date(`${input.startDate}T00:00:00`).getDay()
   const horizon = rollingHorizon()
-  const occurrenceDates = computeOccurrenceDates(input.startDate, input.startTime, horizon)
+  const allOccurrences = computeOccurrenceDates(input.startDate, input.startTime, horizon)
+  if (allOccurrences.length === 0) {
+    // The first occurrence is already past the rolling window, so there's
+    // nothing to generate. Without this, the empty list makes lastOccurrence
+    // undefined and combineDateAndTime produces an Invalid Date, surfacing as
+    // a raw database error rather than a reason the user can act on.
+    throw new Error('That start date is too far ahead — recurring lessons can only be scheduled up to 12 weeks out.')
+  }
+  // A back-dated series would otherwise materialise past occurrences as
+  // "scheduled" lessons, which count against the student's included lessons
+  // for the current period and silently spend the allowance. Keep the weekly
+  // cadence anchored on the start date, but only generate from today forward.
+  const today = isoDateOf(new Date())
+  const occurrenceDates = allOccurrences.filter((iso) => iso >= today)
 
   // Validate the whole initial batch up front so creation is all-or-nothing.
   for (const iso of occurrenceDates) {
@@ -139,16 +152,46 @@ export function registerRecurringSeriesHandlers() {
 // this runs unattended, so a conflicting week is skipped and the rest of the
 // series keeps extending rather than getting stuck or silently disabled.
 export async function extendAllActiveSeries() {
+  const now = new Date()
   const horizon = rollingHorizon()
   const seriesList = await prisma.recurringSeries.findMany({ where: { active: true } })
 
   for (const series of seriesList) {
-    let iso = isoDateOf(series.generatedUntil)
+    const startMark = isoDateOf(series.generatedUntil)
+    // generatedUntil only advances across the leading run of weeks that are
+    // settled — created, already generated on a previous startup, or in the
+    // past and no longer worth creating. The first *future* week we have to
+    // skip for a conflict locks the mark in place so a later startup retries
+    // it (once the conflict clears) instead of losing that lesson forever;
+    // weeks beyond it are still generated in the meantime.
+    let mark = startMark
+    let markLocked = false
+    let iso = startMark
     for (;;) {
       iso = addDaysIso(iso, 7)
       const occStart = combineDateAndTime(iso, series.startTime)
       if (occStart > horizon) break
       const occEnd = combineDateAndTime(iso, series.endTime)
+
+      // Never auto-create a lesson in the past. A generatedUntil left stale by
+      // the app being closed for a while — or a conflict that has since
+      // receded into the past — would otherwise insert past "scheduled"
+      // lessons that count against the current period's included lessons.
+      if (occStart < now) {
+        if (!markLocked) mark = iso
+        continue
+      }
+
+      // Already generated on an earlier startup: the mark can sit behind these
+      // when a prior conflict held it back. Nothing to create — just let the
+      // mark flow past it.
+      const existing = await prisma.lesson.findFirst({
+        where: { recurringSeriesId: series.id, startTime: occStart },
+      })
+      if (existing) {
+        if (!markLocked) mark = iso
+        continue
+      }
 
       const conflict = await prisma.lesson.findFirst({
         where: {
@@ -158,22 +201,33 @@ export async function extendAllActiveSeries() {
           endTime: { gt: occStart },
         },
       })
-      if (!conflict) {
-        await prisma.lesson.create({
-          data: {
-            studentId: series.studentId,
-            instructorId: series.instructorId,
-            type: series.type,
-            title: series.title,
-            startTime: occStart,
-            endTime: occEnd,
-            recurringSeriesId: series.id,
-          },
-        })
+      if (conflict) {
+        // Skip this week but keep extending. Holding the mark here is the whole
+        // point: without it the skipped week falls behind generatedUntil and is
+        // never retried, so a week blocked by a one-off double-booking would
+        // silently never get its lesson even after the conflict is removed.
+        markLocked = true
+        continue
       }
+
+      await prisma.lesson.create({
+        data: {
+          studentId: series.studentId,
+          instructorId: series.instructorId,
+          type: series.type,
+          title: series.title,
+          startTime: occStart,
+          endTime: occEnd,
+          recurringSeriesId: series.id,
+        },
+      })
+      if (!markLocked) mark = iso
+    }
+
+    if (mark !== startMark) {
       await prisma.recurringSeries.update({
         where: { id: series.id },
-        data: { generatedUntil: occStart },
+        data: { generatedUntil: combineDateAndTime(mark, series.startTime) },
       })
     }
   }
