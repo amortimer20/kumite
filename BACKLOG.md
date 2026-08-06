@@ -187,14 +187,11 @@ under the new name.
 
 ### Highest-risk untested logic
 Coverage is good where it exists (membership billing math, recurring-series dates, the student
-archive/delete path, restore validation, and now POS sales — see Done) but concentrated there. Ranked
-by likelihood x cost: `computeReport` in
-`reports.ts` has zero tests and classic date-boundary risk — assert a payment at 23:59 on `endDate` is
-included and one the next day isn't, and that `buildCsv`'s combined total honours the
-`includeMembership`/`includePos` flags, which is the one place CSV output can silently disagree with
-the screen. Then `assertNoOverlap` in `lessons.ts` (`excludeLessonId` self-conflict, cancelled lessons
-not blocking, back-to-back lessons where `end === next start`) and the `lessons:update` merge
-semantics where an absent key means "keep" and an explicit `null` means "clear".
+archive/delete path, restore validation, POS sales, and now the revenue report — see Done) but
+concentrated there. Ranked by likelihood x cost, the remaining gaps: `assertNoOverlap` in `lessons.ts`
+(`excludeLessonId` self-conflict, cancelled lessons not blocking, back-to-back lessons where
+`end === next start`) and the `lessons:update` merge semantics where an absent key means "keep" and an
+explicit `null` means "clear".
 `reconfigureAutoBackup` is pure `setInterval` logic that `vi.useFakeTimers()` covers trivially, and
 silent backup loss is this app's worst failure mode. Cheapest real win: extract `buildScheduleRows`
 from `SchedulePanel.tsx` into `src/lib/` and test the gap computation (cancelled lesson doesn't consume
@@ -229,6 +226,22 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### The revenue report now has tests
+`computeReport` and `buildCsv` in `reports.ts` had zero coverage despite being a money path the studio
+hands to their accountant. `electron/ipc/reports.test.ts` (8 tests, real throwaway migrated DB via
+`createTestDb`, same pattern as the other IPC tests) now locks in the two things most likely to break
+silently. First, the inclusive end-date boundary: a payment at 23:59 on `endDate` is counted and one
+the next midnight isn't (and the same for a POS sale, which is queried on a different column,
+`createdAt`), plus the low end — a payment the day before `startDate` is excluded. This is the whole
+reason `rangeToInstants` uses `lt` the *next* day rather than `endDate`'s own midnight; get it wrong
+and every report drops its last day. Second, that `buildCsv`'s Combined Total and payment-method rows
+honour the `includeMembership`/`includePos` flags across all four combinations — the one place CSV
+output can silently disagree with what's on screen. `buildCsv` was made `export` to test the flag
+logic directly on a hand-built `Report` (it's pure), same precedent as the exported POS functions. A
+breakdown test also pins `normalizeMethod`'s report-level behaviour: freeform `MembershipPayment.method`
+casing is normalized and unknown/null values bucket into "other". Leaves `assertNoOverlap` and
+`buildScheduleRows` as the remaining untested-logic targets (see Backlog).
 
 ### Raising a plan's price can now be applied to students already on it
 Plan edits stay grandfathered by default — existing members keep the price they signed up at, so an

@@ -76,7 +76,7 @@ function formatDollars(cents: number) {
 
 // No value here ever needs quote-escaping — every cell is a number or an
 // app-generated label, never arbitrary user text.
-function buildCsv(report: Report, includeMembership: boolean, includePos: boolean): string {
+export function buildCsv(report: Report, includeMembership: boolean, includePos: boolean): string {
   const rows: (string | number)[][] = []
   rows.push(['Kumite Revenue Report'])
   rows.push(['Start Date', report.startDate])
