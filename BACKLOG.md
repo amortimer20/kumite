@@ -119,11 +119,13 @@ Done). These are the rest, kept in one place so they don't get lost. Roughly in 
 tackling.
 
 ### Most api.* failures are still silent
-There is no `unhandledrejection` handler, and most mutating `api.*` calls have no `try/catch`. The
-established convention is `catch (err) { toast.error(getErrorMessage(err)) }` and every `onSubmit`
-follows it, but most non-submit handlers don't — so a failed IPC call is an unhandled rejection with no
-user feedback, i.e. the click appears to do nothing. `src/hooks/useLessonDelete.ts` is the only file
-that calls `api.*` without even importing `getErrorMessage`. Worth doing in the same pass:
+A global `unhandledrejection` handler now exists (see Done) — it toasts the error for any rejected
+promise no local handler caught, so a failed IPC call no longer looks like a dead click. That's the
+safety net; what remains is the targeted work it doesn't replace. Most mutating `api.*` calls still
+have no `try/catch` of their own; the established convention is `catch (err) { toast.error(getErrorMessage(err)) }`
+and every `onSubmit` follows it, but most non-submit handlers rely on the global net rather than
+handling their own failure inline (which can leave optimistic UI state ahead of a write that never
+landed). Worth doing in the same pass:
 `SettingsPanel.tsx`'s business-hours handler updates state optimistically then awaits with no catch, so
 a failed write leaves the UI showing a value the database never took. Also every *initial* fetch is
 uncaught, which is worse than it sounds — `DashboardPanel.tsx` clears `loading` in `.finally`, so if its
@@ -188,6 +190,16 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### Global unhandled-rejection safety net for failed api.* calls
+Most `onSubmit` handlers wrap their `api.*` call in `catch (err) { toast.error(getErrorMessage(err)) }`,
+but many non-submit handlers didn't, so a failed IPC call became an unhandled promise rejection with no
+user feedback — the click just appeared to do nothing. `src/main.tsx` now registers a
+`window.addEventListener('unhandledrejection', …)` that toasts `getErrorMessage(event.reason)` for any
+rejection no local handler caught. It reuses the same message-cleanup helper as the inline handlers, and
+because a local `catch` stops the rejection from ever reaching the window, it never double-reports. The
+console error is left intact for diagnostics. This is the safety net only; tightening individual
+handlers to manage their own failures inline (and roll back optimistic UI) stays on the Backlog.
 
 ### Recurring series edge cases
 Three separate bugs in `electron/ipc/recurringSeries.ts`, all of which could silently lose or
