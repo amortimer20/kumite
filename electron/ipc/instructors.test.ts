@@ -8,7 +8,7 @@ vi.mock('../db.ts', () => ({
   },
 }))
 
-const { deleteInstructor } = await import('./instructors.ts')
+const { deleteInstructor, assertValidInstructorInput } = await import('./instructors.ts')
 
 let testDb: Awaited<ReturnType<typeof createTestDb>>
 
@@ -30,6 +30,18 @@ async function makeStudent() {
 }
 
 const DAY_MS = 86_400_000
+
+describe('assertValidInstructorInput', () => {
+  it('rejects blank names but accepts real ones', () => {
+    expect(() => assertValidInstructorInput({ firstName: '', lastName: 'Rivera' })).toThrow(/First name/)
+    expect(() => assertValidInstructorInput({ firstName: 'Sam', lastName: '   ' })).toThrow(/Last name/)
+    expect(() => assertValidInstructorInput({ firstName: 'Sam', lastName: 'Rivera' })).not.toThrow()
+  })
+
+  it('ignores names absent from a partial update', () => {
+    expect(() => assertValidInstructorInput({ email: 'sam@dojo.test' })).not.toThrow()
+  })
+})
 
 describe('deleteInstructor', () => {
   it('hard-deletes an instructor with only upcoming lessons', async () => {

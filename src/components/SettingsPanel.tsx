@@ -261,9 +261,17 @@ export function SettingsPanel() {
   }
 
   async function handleChange(dayOfWeek: number, patch: Partial<BusinessHours>) {
+    const previous = hours.find((h) => h.dayOfWeek === dayOfWeek)
     setHours((prev) => prev.map((h) => (h.dayOfWeek === dayOfWeek ? { ...h, ...patch } : h)))
-    const updated = await api.businessHours.update(dayOfWeek, patch)
-    setHours((prev) => prev.map((h) => (h.dayOfWeek === dayOfWeek ? updated : h)))
+    try {
+      const updated = await api.businessHours.update(dayOfWeek, patch)
+      setHours((prev) => prev.map((h) => (h.dayOfWeek === dayOfWeek ? updated : h)))
+    } catch (err) {
+      // Roll the optimistic change back so the UI can never show a value the
+      // database rejected (e.g. a close time before the open time).
+      if (previous) setHours((prev) => prev.map((h) => (h.dayOfWeek === dayOfWeek ? previous : h)))
+      toast.error(getErrorMessage(err))
+    }
   }
 
   async function handleBackup() {

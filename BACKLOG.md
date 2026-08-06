@@ -201,11 +201,8 @@ evaluates `todayIso()` once at module load, so on a front-desk machine left runn
 default membership start date — the billing anchor — is stale; `StudentsPanel` already recomputes
 this at open time. (This one is folded into the non-traditional-fees work above, which defaults the
 assign start date to the 1st, so it'll be fixed there rather than on its own.) Server-side validation
-is absent from half the IPC handlers: `lessons.ts`, `pos.ts` and `memberships.ts` have `assertValid*`
-guards, while `students.ts`, `instructors.ts`, `familyMembers.ts`, `businessHours.ts` and
-`settings.ts` have none — `students:create` accepts an empty `firstName` and `businessHours:update`
-accepts a close time before the open time, which then makes the Schedule availability grid silently
-render nothing for that day. (Several items that used to be listed here are now done — see "Money
+across the remaining handlers is done — see "Server-side validation on the handlers that lacked it" in
+Done. (Several items that used to be listed here are now done — see "Money
 inputs can no longer overflow the Int columns" in Done for the fat-fingered-price fix, and the
 `normalizeMethod`, duplicated-`isoDate`-helper and stale-`HelpPanel`-certificates-claim items were all
 resolved in earlier passes. The Vite template leftovers — the dead `main-process-message`, the one
@@ -213,6 +210,28 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### Server-side validation on the handlers that lacked it
+`lessons.ts`, `pos.ts` and `memberships.ts` guarded their input; `students.ts`, `instructors.ts`,
+`familyMembers.ts`, `businessHours.ts` and `settings.ts` didn't. Added `assertValid*` guards in the
+same shape as the existing ones (checked only when a field is present, so one guard serves both create
+and update). Students, instructors and family members now reject an empty or whitespace-only first/last
+name — `students:create` previously accepted a blank `firstName` that then rendered as an empty row
+everywhere. `businessHours:update` rejects a close time at or before the open time on an open day,
+which used to save silently and make the Schedule availability grid render nothing for that day; the
+subtlety is that the renderer patches one field at a time, so the guard lives in a new exported
+`updateBusinessHours` that validates the row *after* merging the patch over the stored values (or the
+schema defaults). `settings:update` rejects a nonsensical `autoBackupKeepCount` (zero/negative/
+fractional) rather than storing junk that `backupsToPrune` would then have to fail-safe around.
+
+Folded in a companion UI fix so the business-hours guard is actually surfaced: `SettingsPanel`'s
+`handleChange` updated state optimistically and awaited with no catch, so a rejected write would have
+left the UI showing a value the database refused. It now rolls the optimistic change back and toasts
+the error — the one non-`onSubmit` `api.*` caller in that file (the broader silent-`api.*`-failure
+sweep is still its own Backlog entry). Coverage: pure assert tests for students/instructors/
+familyMembers/settings, and `businessHours.test.ts` covering both the pure comparison and the
+merge-then-validate path (a close-time-only patch is checked against the stored open time and the
+rejected write leaves the row untouched). 186 tests pass.
 
 ### The last of the highest-risk untested logic now has tests
 Closed out the "Highest-risk untested logic" backlog entry with three more test files, all against the

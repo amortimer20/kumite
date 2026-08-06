@@ -8,7 +8,7 @@ vi.mock('../db.ts', () => ({
   },
 }))
 
-const { deleteStudent } = await import('./students.ts')
+const { deleteStudent, assertValidStudentInput } = await import('./students.ts')
 
 let testDb: Awaited<ReturnType<typeof createTestDb>>
 
@@ -19,6 +19,27 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await testDb.cleanup()
+})
+
+describe('assertValidStudentInput', () => {
+  it('rejects an empty or whitespace-only first name', () => {
+    expect(() => assertValidStudentInput({ firstName: '', lastName: 'Chen' })).toThrow(/First name/)
+    expect(() => assertValidStudentInput({ firstName: '   ', lastName: 'Chen' })).toThrow(/First name/)
+  })
+
+  it('rejects an empty or whitespace-only last name', () => {
+    expect(() => assertValidStudentInput({ firstName: 'Maya', lastName: '  ' })).toThrow(/Last name/)
+  })
+
+  it('accepts valid names', () => {
+    expect(() => assertValidStudentInput({ firstName: 'Maya', lastName: 'Chen' })).not.toThrow()
+  })
+
+  // A partial update that omits a name entirely leaves it untouched, so an
+  // absent field must pass — only a present-but-blank one is rejected.
+  it('ignores names that are absent from a partial update', () => {
+    expect(() => assertValidStudentInput({ email: 'a@b.com' })).not.toThrow()
+  })
 })
 
 const DAY_MS = 86_400_000

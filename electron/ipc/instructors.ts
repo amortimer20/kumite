@@ -18,6 +18,17 @@ function serializeInstructor<T extends { _count: { lessons: number } }>(instruct
   return { ...rest, upcomingLessonCount: _count.lessons }
 }
 
+// Reject empty/whitespace names, checked only when present so it serves both
+// create and update — same pattern as students/pos.
+export function assertValidInstructorInput(input: Partial<InstructorInput>) {
+  if (input.firstName !== undefined && input.firstName.trim() === '') {
+    throw new Error('First name is required.')
+  }
+  if (input.lastName !== undefined && input.lastName.trim() === '') {
+    throw new Error('Last name is required.')
+  }
+}
+
 // Deleting an instructor always clears their upcoming lessons first (real
 // history — completed/no_show — is never touched here) *before* deciding
 // whether the instructor itself hard-deletes or falls back to archiving —
@@ -56,11 +67,13 @@ export function registerInstructorHandlers() {
   })
 
   ipcMain.handle('instructors:create', async (_event, input: InstructorInput) => {
+    assertValidInstructorInput(input)
     const instructor = await prisma.instructor.create({ data: input, include: instructorInclude })
     return serializeInstructor(instructor)
   })
 
   ipcMain.handle('instructors:update', async (_event, id: string, input: Partial<InstructorInput>) => {
+    assertValidInstructorInput(input)
     const instructor = await prisma.instructor.update({ where: { id }, data: input, include: instructorInclude })
     return serializeInstructor(instructor)
   })

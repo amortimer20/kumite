@@ -15,6 +15,19 @@ function serializeStudent<T extends { _count: { lessons: number } }>(student: T)
   return { ...rest, lessonCount: _count.lessons }
 }
 
+// SQLite has no NOT-NULL-with-content constraint, so an empty or
+// whitespace-only name would be accepted and then render as a blank row
+// everywhere. Checked only when the field is present, so the same guard
+// serves both create and update — same shape as pos.ts's assertValidItemInput.
+export function assertValidStudentInput(input: Partial<StudentInput>) {
+  if (input.firstName !== undefined && input.firstName.trim() === '') {
+    throw new Error('First name is required.')
+  }
+  if (input.lastName !== undefined && input.lastName.trim() === '') {
+    throw new Error('Last name is required.')
+  }
+}
+
 // memberSince arrives as an ISO string (or null/undefined) from the renderer;
 // Prisma's DateTime column needs an actual Date, and `undefined` must stay
 // undefined (untouched) rather than becoming an unintended null on update.
@@ -38,6 +51,7 @@ export function registerStudentHandlers() {
     // agreedToWaiver is transient — the server stamps its own timestamp
     // rather than trusting a client-supplied one, so the record reflects
     // when the request actually arrived, not something editable client-side.
+    assertValidStudentInput(input)
     const { agreedToWaiver, ...studentInput } = input
     const student = await prisma.student.create({
       data: { ...toStudentData(studentInput), waiverAgreedAt: agreedToWaiver ? new Date() : null },
@@ -47,6 +61,7 @@ export function registerStudentHandlers() {
   })
 
   ipcMain.handle('students:update', async (_event, id: string, input: Partial<StudentInput>) => {
+    assertValidStudentInput(input)
     const student = await prisma.student.update({ where: { id }, data: toStudentData(input), include: studentInclude })
     return serializeStudent(student)
   })
