@@ -198,11 +198,8 @@ under the new name.
 
 ### Highest-risk untested logic
 Coverage is good where it exists (membership billing math, recurring-series dates, the student
-archive/delete path, restore validation) but concentrated there. Ranked by likelihood x cost:
-`electron/ipc/pos.ts` has zero tests despite being all money, and is already refactored into exported
-functions so tests are nearly free — assert that a sale keeps its snapshotted price after the catalog
-is repriced, that an unknown `itemId` throws, that `assertValidSaleInput` rejects empty carts and
-non-integer quantities, and that `deletePosItem` archives on FK violation. `computeReport` in
+archive/delete path, restore validation, and now POS sales — see Done) but concentrated there. Ranked
+by likelihood x cost: `computeReport` in
 `reports.ts` has zero tests and classic date-boundary risk — assert a payment at 23:59 on `endDate` is
 included and one the next day isn't, and that `buildCsv`'s combined total honours the
 `includeMembership`/`includePos` flags, which is the one place CSV output can silently disagree with
@@ -243,6 +240,18 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### POS money paths now have tests
+`electron/ipc/pos.ts` was the one all-money handler with zero coverage, despite already being
+refactored into exported functions so tests were nearly free. `electron/ipc/pos.test.ts` (7 tests,
+against a real throwaway migrated SQLite DB via `createTestDb`, same pattern as
+`instructors.test.ts`) now locks in the properties that matter: a completed sale keeps its
+snapshotted `unitPriceCents`/`totalCents` after the catalog item is repriced (the whole reason
+`PosSaleItem` snapshots name and price); `createPosSale` throws when an `itemId` no longer exists,
+and `assertValidSaleInput` (exercised through `createPosSale`) rejects an empty cart, a non-integer
+quantity, and a zero/negative quantity; and `deletePosItem` hard-deletes an unsold item but archives
+one that's been sold, on the P2003 FK-violation fallback. Leaves `computeReport`, `assertNoOverlap`,
+and `buildScheduleRows` as the remaining untested-logic targets (see Backlog).
 
 ### Payment history filters to a recent window by default
 A student's payment history spans every membership they've ever had and only grows, so an established
