@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createTestDb } from '../testUtils/testDb.ts'
+import { currentPeriodBounds } from '../membershipLogic.ts'
 
 let mockPrisma: Awaited<ReturnType<typeof createTestDb>>['prisma']
 vi.mock('../db.ts', () => ({
@@ -10,6 +11,7 @@ vi.mock('../db.ts', () => ({
 
 const {
   addMembershipUsageAdjustment,
+  applyPlanTermsToActiveMemberships,
   assignMembership,
   cancelActiveMembershipForStudent,
   cancelMembership,
@@ -193,6 +195,112 @@ describe('switching plans across billing cadences', () => {
     const after = await getMembershipForStudent(student.id)
     // The old debt survives the switch, plus the first week on the new plan.
     expect(after?.amountOwedCents).toBe(owedBefore + 5_000)
+  })
+})
+
+// The opt-in escape hatch from grandfathering: raising a plan's price and
+// choosing to apply it to the students already on it. The guarantee is "new
+// price from the next billing date," never a rewrite of the past.
+describe('applyPlanTermsToActiveMemberships', () => {
+  it('re-prices a paid-up member from the next billing date, banking the past at the OLD price', async () => {
+    const student = await makeStudent()
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const startDate = new Date(Date.now() - 70 * DAY_MS)
+    const membership = await assignMembership(student.id, { planId: plan.id, startDate: startDate.toISOString() })
+    // Three monthly periods have elapsed; paid in full.
+    for (let i = 0; i < 3; i++) {
+      await recordMembershipPayment(membership.id, { amountCents: 10_000, paidOn: new Date().toISOString() })
+    }
+    expect((await getMembershipForStudent(student.id))?.amountOwedCents).toBe(0)
+
+    await updateMembershipPlan(plan.id, { priceCents: 12_000 })
+    const { updated } = await applyPlanTermsToActiveMemberships(plan.id)
+    expect(updated).toBe(1)
+
+    const row = await mockPrisma.studentMembership.findUniqueOrThrow({ where: { id: membership.id } })
+    // The three elapsed periods are banked at $100, NOT the new $120 — the past
+    // is never rewritten.
+    expect(row.priorChargesCents).toBe(30_000)
+    // Going forward the membership bills at the new price…
+    expect(row.billedPriceCents).toBe(12_000)
+    // …anchored to the current period's end, so the billing day doesn't shift.
+    const { periodEnd } = currentPeriodBounds(startDate, 'monthly', new Date())
+    expect(row.startDate.getTime()).toBe(periodEnd.getTime())
+
+    // Still paid up right now: $300 banked, $300 paid, new price not yet due.
+    const after = await getMembershipForStudent(student.id)
+    expect(after?.amountOwedCents).toBe(0)
+    expect(after?.effectivePriceCents).toBe(12_000)
+  })
+
+  it('leaves a behind member owing the same amount (current period keeps the old price)', async () => {
+    const student = await makeStudent()
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const membership = await assignMembership(student.id, {
+      planId: plan.id,
+      startDate: new Date(Date.now() - 70 * DAY_MS).toISOString(),
+    })
+    // 3 periods elapsed, only $250 paid — owes $50 at the old price.
+    await recordMembershipPayment(membership.id, { amountCents: 25_000, paidOn: new Date().toISOString() })
+    const owedBefore = (await getMembershipForStudent(student.id))!.amountOwedCents
+    expect(owedBefore).toBe(5_000)
+
+    await updateMembershipPlan(plan.id, { priceCents: 12_000 })
+    await applyPlanTermsToActiveMemberships(plan.id)
+
+    // The outstanding $50 is for a period that predates the rise, so it stays $50.
+    expect((await getMembershipForStudent(student.id))?.amountOwedCents).toBe(5_000)
+  })
+
+  it('skips members with a custom price and does not count them', async () => {
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const standard = await makeStudent()
+    const custom = await makeStudent()
+    const startDate = new Date(Date.now() - 70 * DAY_MS).toISOString()
+    await assignMembership(standard.id, { planId: plan.id, startDate })
+    const customMembership = await assignMembership(custom.id, {
+      planId: plan.id,
+      priceOverrideCents: 7_000,
+      startDate,
+    })
+
+    await updateMembershipPlan(plan.id, { priceCents: 12_000 })
+    const { updated } = await applyPlanTermsToActiveMemberships(plan.id)
+
+    // Only the standard-price member is touched.
+    expect(updated).toBe(1)
+    const customRow = await mockPrisma.studentMembership.findUniqueOrThrow({ where: { id: customMembership.id } })
+    expect(customRow.priceOverrideCents).toBe(7_000)
+    expect(customRow.billedPriceCents).toBe(10_000)
+    expect(customRow.priorChargesCents).toBe(0)
+  })
+
+  it('adopts the new terms without re-anchoring a not-yet-started membership', async () => {
+    const student = await makeStudent()
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const futureStart = new Date(Date.now() + 40 * DAY_MS)
+    const membership = await assignMembership(student.id, {
+      planId: plan.id,
+      startDate: futureStart.toISOString(),
+    })
+
+    await updateMembershipPlan(plan.id, { priceCents: 12_000 })
+    await applyPlanTermsToActiveMemberships(plan.id)
+
+    const row = await mockPrisma.studentMembership.findUniqueOrThrow({ where: { id: membership.id } })
+    // New price adopted, but the future start is left alone — banking/re-anchoring
+    // here would swallow the member's first period.
+    expect(row.billedPriceCents).toBe(12_000)
+    expect(row.startDate.getTime()).toBe(futureStart.getTime())
+    expect(row.priorChargesCents).toBe(0)
   })
 })
 

@@ -72,6 +72,7 @@ const api: Api = {
     create: (input: MembershipPlanInput) => ipcRenderer.invoke('membershipPlans:create', input),
     update: (id: string, input: Partial<MembershipPlanInput>) => ipcRenderer.invoke('membershipPlans:update', id, input),
     delete: (id: string) => ipcRenderer.invoke('membershipPlans:delete', id),
+    applyToExisting: (id: string) => ipcRenderer.invoke('membershipPlans:applyToExisting', id),
   },
   studentMemberships: {
     getForStudent: (studentId: string) => ipcRenderer.invoke('studentMemberships:getForStudent', studentId),

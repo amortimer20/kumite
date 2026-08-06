@@ -138,6 +138,61 @@ export async function updateMembershipPlan(id: string, input: Partial<Membership
   return serializeMembershipPlan(plan)
 }
 
+// Applies a plan's current price and cadence to the students already on it.
+// Plan edits otherwise reach new sign-ups only (see updateMembershipPlan and
+// the schema comment on billedPriceCents) — deliberately, so that editing a
+// plan can never rewrite past billing. This is the opt-in escape hatch for
+// "raise the price for everyone on this plan," offered as a prompt after a
+// plan's billing terms change.
+//
+// Per membership: bank everything charged through the current period at the
+// student's OLD price into priorChargesCents, then re-anchor startDate to that
+// period's end and snapshot the plan's new price/cadence. So past and current
+// periods keep the old price, and the new price takes effect at the next due
+// date without shifting the billing day. This is the same close-out-the-term
+// mechanism a cadence-changing plan switch uses (see updateMembership); the
+// difference is the anchor is the current period's end, not `now`, precisely so
+// a same-cadence price change doesn't move a monthly student's billing day to
+// whatever day prices were raised.
+//
+// Memberships with a manual priceOverrideCents are skipped (filtered out of the
+// query): that price is a deliberate per-student arrangement a plan-wide change
+// shouldn't overwrite. All updates run in one transaction, so an interrupt
+// can't leave some students re-priced and others not.
+export async function applyPlanTermsToActiveMemberships(planId: string) {
+  const now = new Date()
+  return prisma.$transaction(async (tx) => {
+    const plan = await tx.membershipPlan.findUniqueOrThrow({ where: { id: planId } })
+    const memberships = await tx.studentMembership.findMany({
+      where: { planId, active: true, priceOverrideCents: null },
+    })
+    for (const m of memberships) {
+      // A not-yet-started membership (e.g. a future-dated signup) has no past to
+      // protect, so it just adopts the new terms from its existing start date —
+      // banking/re-anchoring here would skip its first period entirely.
+      if (m.startDate > now) {
+        await tx.studentMembership.update({
+          where: { id: m.id },
+          data: { billedPriceCents: plan.priceCents, billingFrequency: plan.billingFrequency },
+        })
+        continue
+      }
+      const { periodEnd } = currentPeriodBounds(m.startDate, m.billingFrequency, now)
+      await tx.studentMembership.update({
+        where: { id: m.id },
+        data: {
+          priorChargesCents:
+            m.priorChargesCents + chargesForTerm(m.startDate, m.billingFrequency, now, m.billedPriceCents),
+          startDate: periodEnd,
+          billedPriceCents: plan.priceCents,
+          billingFrequency: plan.billingFrequency,
+        },
+      })
+    }
+    return { updated: memberships.length }
+  })
+}
+
 // Same archive-on-FK-violation fallback as students/instructors: a plan
 // that's ever been assigned to a student can't be hard-deleted (its
 // StudentMembership rows are kept for billing history), so it's archived
@@ -315,6 +370,7 @@ export function registerMembershipHandlers() {
     updateMembershipPlan(id, input),
   )
   ipcMain.handle('membershipPlans:delete', (_event, id: string) => deleteMembershipPlan(id))
+  ipcMain.handle('membershipPlans:applyToExisting', (_event, id: string) => applyPlanTermsToActiveMemberships(id))
 
   ipcMain.handle('studentMemberships:getForStudent', (_event, studentId: string) => getMembershipForStudent(studentId))
   ipcMain.handle('studentMemberships:getPaymentHistory', (_event, studentId: string) => getPaymentHistoryForStudent(studentId))

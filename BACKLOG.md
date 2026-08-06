@@ -22,17 +22,6 @@ untested: do a real Windows build/install/upgrade pass to confirm it works as ex
 whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
-## No way to raise the price for students already on a plan
-Plan price/cadence edits now apply to new sign-ups only — existing memberships bill at the price they
-were signed up at (see "Membership billing no longer re-bills the past" in Done). That was the
-deliberate choice, because the alternative was the bug it replaced: editing a plan rewrote every past
-period for everyone on it. The gap it leaves is that raising prices for existing members means opening
-each student's Membership and setting a custom price by hand, which doesn't scale past a handful.
-Worth adding a prompt on save — "apply to the N students on this plan from today forward?" — which
-would re-snapshot those memberships and bank their current term into `priorChargesCents`, exactly the
-mechanism a cadence-changing plan switch already uses. Past periods must keep the old price either
-way.
-
 ## Membership billing has no per-period charge ledger
 `amountOwedCents` is derived (`priorChargesCents` + periods elapsed x snapshotted price - total paid)
 rather than read from a list of what was actually charged when. That's why the snapshot and
@@ -240,6 +229,30 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### Raising a plan's price can now be applied to students already on it
+Plan edits stay grandfathered by default — existing members keep the price they signed up at, so an
+edit still can't rewrite past billing. What was missing was any way to *opt in* to raising the price
+for current members short of hand-editing each one. Saving a plan's price or billing-frequency change
+now, when there are students on the plan, opens a follow-up prompt: "Apply the new price to current
+members?" Choosing **Not now** leaves grandfathering exactly as before; choosing **Apply** re-prices
+everyone on the plan.
+
+The guarantee is "new price from the next billing date," never a rewrite of the past.
+`applyPlanTermsToActiveMemberships` (in `electron/ipc/memberships.ts`, one transaction over all active
+memberships on the plan) banks everything charged through the current period at the member's *old*
+price into `priorChargesCents`, then re-anchors `startDate` to the current period's end and snapshots
+the plan's new price/cadence. So past and current periods keep the old price and the new price starts
+at the next due date — and because the anchor is the period's end rather than `now`, a monthly
+member's billing day doesn't shift to whatever day prices were raised (the one deliberate divergence
+from the cadence-switch mechanism in `updateMembership`, which uses `now` because its cadence is
+changing anyway). Members with a manual `priceOverrideCents` are skipped — that price is a deliberate
+per-student arrangement — and a not-yet-started (future-dated) membership just adopts the new terms
+from its existing start rather than being re-anchored, which would have swallowed its first period.
+Four integration tests in `memberships.test.ts` cover the paid-up re-price, a behind member keeping
+the same owed amount (current period stays at the old price), the custom-price skip (and that it's not
+counted), and the future-start case. HelpPanel's Settings section documents the prompt, and the
+edit-plan dialog's copy now points to it.
 
 ### POS money paths now have tests
 `electron/ipc/pos.ts` was the one all-money handler with zero coverage, despite already being

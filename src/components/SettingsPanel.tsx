@@ -96,6 +96,12 @@ export function SettingsPanel() {
   const [editPlanForm, setEditPlanForm] = useState(EMPTY_PLAN_FORM)
   const [editPlanError, setEditPlanError] = useState<string | null>(null)
 
+  // After a plan's price/cadence change is saved (which applies to new sign-ups
+  // only), offer to also apply it to the students already on the plan. Holds the
+  // plan and its student count for the follow-up prompt; null when closed.
+  const [applyPrompt, setApplyPrompt] = useState<{ planId: string; title: string; studentCount: number } | null>(null)
+  const [applyingToExisting, setApplyingToExisting] = useState(false)
+
   useEffect(() => {
     api.businessHours.list().then(setHours).finally(() => setLoading(false))
   }, [])
@@ -209,8 +215,14 @@ export function SettingsPanel() {
       setEditPlanError('Enter a price of 0 or more (use 0 for a free plan).')
       return
     }
+    // Whether the billing terms (not just the title/lessons) changed — that's
+    // what "apply to new sign-ups only" is about, so it's the only case worth
+    // offering to apply to existing members.
+    const termsChanged =
+      priceCents !== editingPlan.priceCents || editPlanForm.billingFrequency !== editingPlan.billingFrequency
+    const { id: planId, title, studentCount } = editingPlan
     try {
-      await api.membershipPlans.update(editingPlan.id, {
+      await api.membershipPlans.update(planId, {
         title: editPlanForm.title.trim(),
         billingFrequency: editPlanForm.billingFrequency,
         priceCents,
@@ -219,8 +231,32 @@ export function SettingsPanel() {
       toast.success('Changes saved.')
       setEditingPlan(null)
       await refreshPlans()
+      // Editing a plan only affects new sign-ups by default; if the terms
+      // changed and there are students on it, ask whether to apply to them too.
+      if (termsChanged && studentCount > 0) {
+        setApplyPrompt({ planId, title, studentCount })
+      }
     } catch (err) {
       toast.error(getErrorMessage(err))
+    }
+  }
+
+  async function handleApplyToExisting() {
+    if (!applyPrompt) return
+    setApplyingToExisting(true)
+    try {
+      const { updated } = await api.membershipPlans.applyToExisting(applyPrompt.planId)
+      toast.success(
+        updated === 1
+          ? '1 membership now bills at the new price from its next billing date.'
+          : `${updated} memberships now bill at the new price from their next billing date.`,
+      )
+      setApplyPrompt(null)
+      await refreshPlans()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setApplyingToExisting(false)
     }
   }
 
@@ -588,15 +624,16 @@ export function SettingsPanel() {
           <DialogHeader>
             <DialogTitle>Edit Membership Plan</DialogTitle>
           </DialogHeader>
-          {/* Without this, a price change looks like it silently did nothing:
-              existing memberships keep the price they were signed up at, by
-              design, so that editing a plan can't rewrite past billing. */}
+          {/* Editing a plan changes new sign-ups by default; existing members
+              keep the price they signed up at, so an edit can't rewrite past
+              billing. When there are members on the plan, saving a price/cadence
+              change opens a follow-up prompt to apply it to them too. */}
           <p className="text-sm text-muted-foreground">
-            Price and billing frequency changes apply to new sign-ups only.
+            Price and billing frequency changes apply to new sign-ups by default.
             {editingPlan && editingPlan.studentCount > 0 && (
               <>
                 {' '}The {editingPlan.studentCount} student{editingPlan.studentCount === 1 ? '' : 's'} already on this
-                plan keep their current price — change it on their membership if you need to.
+                plan keep their current price — after saving, you can choose to apply the change to them as well.
               </>
             )}
           </p>
@@ -653,6 +690,31 @@ export function SettingsPanel() {
               <Button type="submit">Save</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={applyPrompt !== null} onOpenChange={(open) => !open && !applyingToExisting && setApplyPrompt(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Apply the new price to current members?</DialogTitle>
+          </DialogHeader>
+          {applyPrompt && (
+            <p className="text-sm text-muted-foreground">
+              {applyPrompt.title} is saved and applies to new sign-ups. There{' '}
+              {applyPrompt.studentCount === 1 ? 'is 1 student' : `are ${applyPrompt.studentCount} students`} already on
+              this plan. You can apply the new price to them too, taking effect at each one's next billing date — their
+              past and current periods keep the old price, and their billing day doesn't change. Anyone with a custom
+              price stays as they are. Otherwise, current members keep their current price.
+            </p>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setApplyPrompt(null)} disabled={applyingToExisting}>
+              Not now
+            </Button>
+            <Button onClick={handleApplyToExisting} disabled={applyingToExisting}>
+              Apply to current members
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

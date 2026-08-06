@@ -544,6 +544,12 @@ export interface Api {
     update(id: string, input: Partial<MembershipPlanInput>): Promise<MembershipPlan>
     // Archives instead of deleting if any student is currently on the plan.
     delete(id: string): Promise<{ archived: boolean }>
+    // Applies the plan's current price/cadence to the students already on it,
+    // taking effect at each one's next billing date — past and current periods
+    // keep the old price, and the billing day doesn't shift. Students with a
+    // custom (overridden) price are left untouched. Returns how many
+    // memberships were actually updated.
+    applyToExisting(id: string): Promise<{ updated: number }>
   }
   studentMemberships: {
     // The student's currently active membership, with usage/due fields
