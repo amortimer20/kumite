@@ -10,6 +10,7 @@ import { useLessonDelete } from '@/hooks/useLessonDelete'
 import { getErrorMessage } from '@/lib/errors'
 import { dateToIso, todayIso } from '@/lib/isoDate'
 import { STATUS_LABEL } from '@/lib/lessonStatus'
+import { buildScheduleRows, type ScheduleRow } from '@/lib/scheduleRows'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -57,31 +58,6 @@ function formatTime(d: Date) {
 }
 
 const DAY_LABEL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-
-type ScheduleRow =
-  | { kind: 'lesson'; lesson: Lesson }
-  | { kind: 'gap'; start: Date; end: Date }
-
-function buildScheduleRows(dayStart: Date, dayEnd: Date, lessons: Lesson[]): ScheduleRow[] {
-  const sorted = [...lessons].sort(
-    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-  )
-  const rows: ScheduleRow[] = []
-  let cursor = dayStart
-  for (const lesson of sorted) {
-    const start = new Date(lesson.startTime)
-    const end = new Date(lesson.endTime)
-    if (start > cursor) {
-      const gapEnd = start < dayEnd ? start : dayEnd
-      if (gapEnd > cursor) rows.push({ kind: 'gap', start: cursor, end: gapEnd })
-    }
-    rows.push({ kind: 'lesson', lesson })
-    const advanceTo = lesson.status === 'cancelled' ? start : end
-    if (advanceTo > cursor) cursor = advanceTo
-  }
-  if (cursor < dayEnd) rows.push({ kind: 'gap', start: cursor, end: dayEnd })
-  return rows
-}
 
 export function SchedulePanel() {
   const [date, setDate] = useState(todayIso())

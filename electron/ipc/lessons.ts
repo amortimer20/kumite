@@ -48,6 +48,68 @@ export async function assertNoOverlap(
   }
 }
 
+export async function createLesson(input: LessonInput) {
+  const startTime = new Date(input.startTime)
+  const endTime = new Date(input.endTime)
+  if (endTime <= startTime) {
+    throw new Error('Lesson end time must be after the start time.')
+  }
+  const type = input.type ?? 'private'
+  assertValidLessonInput(type, input.studentId, input.title, input.prospectName)
+  await assertNoOverlap(input.instructorId, startTime, endTime)
+  return prisma.lesson.create({
+    data: {
+      studentId: type === 'private' ? input.studentId : null,
+      instructorId: input.instructorId,
+      type,
+      title: type === 'group' ? input.title : null,
+      prospectName: type === 'intro' ? input.prospectName : null,
+      prospectPhone: type === 'intro' ? input.prospectPhone : null,
+      startTime,
+      endTime,
+      notes: input.notes,
+    },
+    include,
+  })
+}
+
+// Merge semantics for a partial update: a key that's *absent* from `input`
+// keeps the existing value, while a key present with an explicit `null`
+// clears it. This is why the nullable fields test `'key' in input` rather
+// than `input.key ?? existing.key` — the latter would make clearing a value
+// impossible, since null and "not provided" would be indistinguishable.
+export async function updateLesson(id: string, input: Partial<LessonInput>) {
+  const existing = await prisma.lesson.findUniqueOrThrow({ where: { id } })
+  const startTime = input.startTime ? new Date(input.startTime) : existing.startTime
+  const endTime = input.endTime ? new Date(input.endTime) : existing.endTime
+  const instructorId = input.instructorId ?? existing.instructorId
+  const type = input.type ?? existing.type
+  const studentId = 'studentId' in input ? input.studentId : existing.studentId
+  const title = 'title' in input ? input.title : existing.title
+  const prospectName = 'prospectName' in input ? input.prospectName : existing.prospectName
+  const prospectPhone = 'prospectPhone' in input ? input.prospectPhone : existing.prospectPhone
+  if (endTime <= startTime) {
+    throw new Error('Lesson end time must be after the start time.')
+  }
+  assertValidLessonInput(type, studentId, title, prospectName)
+  await assertNoOverlap(instructorId, startTime, endTime, id)
+  return prisma.lesson.update({
+    where: { id },
+    data: {
+      studentId: type === 'private' ? studentId : null,
+      instructorId,
+      type,
+      title: type === 'group' ? title : null,
+      prospectName: type === 'intro' ? prospectName : null,
+      prospectPhone: type === 'intro' ? prospectPhone : null,
+      startTime,
+      endTime,
+      notes: input.notes,
+    },
+    include,
+  })
+}
+
 export function registerLessonHandlers() {
   ipcMain.handle('lessons:list', async (_event, filter?: LessonListFilter) => {
     return prisma.lesson.findMany({
@@ -62,62 +124,9 @@ export function registerLessonHandlers() {
     })
   })
 
-  ipcMain.handle('lessons:create', async (_event, input: LessonInput) => {
-    const startTime = new Date(input.startTime)
-    const endTime = new Date(input.endTime)
-    if (endTime <= startTime) {
-      throw new Error('Lesson end time must be after the start time.')
-    }
-    const type = input.type ?? 'private'
-    assertValidLessonInput(type, input.studentId, input.title, input.prospectName)
-    await assertNoOverlap(input.instructorId, startTime, endTime)
-    return prisma.lesson.create({
-      data: {
-        studentId: type === 'private' ? input.studentId : null,
-        instructorId: input.instructorId,
-        type,
-        title: type === 'group' ? input.title : null,
-        prospectName: type === 'intro' ? input.prospectName : null,
-        prospectPhone: type === 'intro' ? input.prospectPhone : null,
-        startTime,
-        endTime,
-        notes: input.notes,
-      },
-      include,
-    })
-  })
+  ipcMain.handle('lessons:create', (_event, input: LessonInput) => createLesson(input))
 
-  ipcMain.handle('lessons:update', async (_event, id: string, input: Partial<LessonInput>) => {
-    const existing = await prisma.lesson.findUniqueOrThrow({ where: { id } })
-    const startTime = input.startTime ? new Date(input.startTime) : existing.startTime
-    const endTime = input.endTime ? new Date(input.endTime) : existing.endTime
-    const instructorId = input.instructorId ?? existing.instructorId
-    const type = input.type ?? existing.type
-    const studentId = 'studentId' in input ? input.studentId : existing.studentId
-    const title = 'title' in input ? input.title : existing.title
-    const prospectName = 'prospectName' in input ? input.prospectName : existing.prospectName
-    const prospectPhone = 'prospectPhone' in input ? input.prospectPhone : existing.prospectPhone
-    if (endTime <= startTime) {
-      throw new Error('Lesson end time must be after the start time.')
-    }
-    assertValidLessonInput(type, studentId, title, prospectName)
-    await assertNoOverlap(instructorId, startTime, endTime, id)
-    return prisma.lesson.update({
-      where: { id },
-      data: {
-        studentId: type === 'private' ? studentId : null,
-        instructorId,
-        type,
-        title: type === 'group' ? title : null,
-        prospectName: type === 'intro' ? prospectName : null,
-        prospectPhone: type === 'intro' ? prospectPhone : null,
-        startTime,
-        endTime,
-        notes: input.notes,
-      },
-      include,
-    })
-  })
+  ipcMain.handle('lessons:update', (_event, id: string, input: Partial<LessonInput>) => updateLesson(id, input))
 
   ipcMain.handle('lessons:updateStatus', async (_event, id: string, status: LessonStatus) => {
     return prisma.lesson.update({ where: { id }, data: { status }, include })

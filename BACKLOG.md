@@ -185,19 +185,6 @@ Relatedly, the membership dialog's effect resets its forms but never clears `mem
 `paymentHistory`, so a failed fetch for the newly-opened student shows the previous student's figures
 under the new name.
 
-### Highest-risk untested logic
-Coverage is good where it exists (membership billing math, recurring-series dates, the student
-archive/delete path, restore validation, POS sales, and now the revenue report — see Done) but
-concentrated there. Ranked by likelihood x cost, the remaining gaps: `assertNoOverlap` in `lessons.ts`
-(`excludeLessonId` self-conflict, cancelled lessons not blocking, back-to-back lessons where
-`end === next start`) and the `lessons:update` merge semantics where an absent key means "keep" and an
-explicit `null` means "clear".
-`reconfigureAutoBackup` is pure `setInterval` logic that `vi.useFakeTimers()` covers trivially, and
-silent backup loss is this app's worst failure mode. Cheapest real win: extract `buildScheduleRows`
-from `SchedulePanel.tsx` into `src/lib/` and test the gap computation (cancelled lesson doesn't consume
-its slot, lesson running past closing time, overlapping lessons) — it needs no renderer test infra and
-runs under the existing node-environment vitest config.
-
 ### Recurring series edge cases
 Three separate small bugs in `electron/ipc/recurringSeries.ts`. `generatedUntil` is advanced
 unconditionally, including on the path that *skips* an occurrence because of a conflict, so a week
@@ -226,6 +213,27 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### The last of the highest-risk untested logic now has tests
+Closed out the "Highest-risk untested logic" backlog entry with three more test files, all against the
+existing node-environment vitest config (no renderer infra). `electron/ipc/lessons.test.ts` (9 tests)
+covers `assertNoOverlap` — a real overlap throws, a back-to-back lesson where `end === next start`
+does *not* (both range checks are strict), a cancelled lesson never blocks, `excludeLessonId` stops a
+lesson conflicting with itself on update, and different instructors don't collide — plus the
+`lessons:update` merge semantics: a key absent from the partial update keeps the existing value while
+an explicit `null` clears it (probed both ways on an intro lesson's optional phone), the end-after-start
+guard, and the type-switch that drops a student when a private lesson becomes a group one. Testing the
+merge meant extracting the `lessons:create`/`lessons:update` bodies into exported `createLesson`/
+`updateLesson` functions with thin `ipcMain.handle` delegates, the same shape `pos.ts` and
+`instructors.ts` already use. `electron/autoBackup.test.ts` (6 tests, `vi.useFakeTimers()` +
+mocked backup/DB/fs) pins `reconfigureAutoBackup`: nothing scheduled when disabled or with no folder,
+one backup immediately on enable, one per interval tick, the timer cleared when reconfigured to
+disabled, and — the important one — the old interval replaced (not left running alongside) when the
+frequency changes. Finally `buildScheduleRows` was extracted from `SchedulePanel.tsx` into
+`src/lib/scheduleRows.ts` (a behaviour-preserving move) and given 8 tests for the gap arithmetic: a
+cancelled lesson doesn't consume its slot, a lesson running past closing produces no negative trailing
+gap, overlapping lessons never yield a zero/negative gap, back-to-back lessons leave no gap between
+them, and unsorted input is ordered first.
 
 ### The revenue report now has tests
 `computeReport` and `buildCsv` in `reports.ts` had zero coverage despite being a money path the studio
