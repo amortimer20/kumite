@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
@@ -62,6 +62,12 @@ export function StudentMembershipDialog({
   const [paymentHistory, setPaymentHistory] = useState<MembershipPaymentWithPlan[]>([])
   const [historyRange, setHistoryRange] = useState(DEFAULT_PAYMENT_HISTORY_RANGE)
   const [loading, setLoading] = useState(true)
+  // Bumped on every refresh so a slow response for a student who is no longer
+  // on screen is dropped rather than applied. Without it, switching from a
+  // student with a long payment history to another lands the first student's
+  // membership under the second's name — and because the payment form reads
+  // `membership.id`, a payment then posts to the wrong student's membership.
+  const requestIdRef = useRef(0)
 
   const [assignForm, setAssignForm] = useState(EMPTY_ASSIGN_FORM)
   const [assignError, setAssignError] = useState<string | null>(null)
@@ -87,10 +93,14 @@ export function StudentMembershipDialog({
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null)
 
   async function refresh(studentId: string) {
+    const requestId = ++requestIdRef.current
     const [m, history] = await Promise.all([
       api.studentMemberships.getForStudent(studentId),
       api.studentMemberships.getPaymentHistory(studentId),
     ])
+    // A newer refresh (the student switched, or another mutation fired one)
+    // has superseded this one — drop it so it can't render stale figures.
+    if (requestId !== requestIdRef.current) return m
     setPaymentHistory(history)
     setMembership(m)
     if (m) {
@@ -117,15 +127,28 @@ export function StudentMembershipDialog({
   useEffect(() => {
     if (!student) return
     setLoading(true)
+    // Clear the previous student's figures immediately so a failed or slow
+    // load can never leave them showing under the newly-opened student's name.
+    setMembership(null)
+    setPaymentHistory([])
     setAssignForm(EMPTY_ASSIGN_FORM)
     setAssignError(null)
     setPaymentError(null)
     setAdjustmentForm(EMPTY_ADJUSTMENT_FORM)
     setAdjustmentError(null)
     setHistoryRange(DEFAULT_PAYMENT_HISTORY_RANGE)
-    Promise.all([refresh(student.id), api.membershipPlans.list()])
-      .then(([, allPlans]) => setPlans(allPlans.filter((p) => p.active)))
-      .finally(() => setLoading(false))
+    // refresh() bumps requestIdRef synchronously, so reading it right after
+    // captures this load's id for guarding the plans/loading updates too.
+    const loadPromise = Promise.all([refresh(student.id), api.membershipPlans.list()])
+    const requestId = requestIdRef.current
+    loadPromise
+      .then(([, allPlans]) => {
+        if (requestId !== requestIdRef.current) return
+        setPlans(allPlans.filter((p) => p.active))
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false)
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [student?.id])
 

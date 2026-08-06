@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
@@ -64,6 +64,10 @@ export function ReportsPanel() {
 
   const [includeMembership, setIncludeMembership] = useState(true)
   const [includePos, setIncludePos] = useState(true)
+  // Bumped per generate so a slower earlier range (e.g. This Year) can't land
+  // after a later one (This Month) and show totals for a range the inputs no
+  // longer reflect.
+  const requestIdRef = useRef(0)
 
   async function handleGenerate(rangeStart = startDate, rangeEnd = endDate) {
     if (rangeEnd < rangeStart) {
@@ -72,14 +76,17 @@ export function ReportsPanel() {
     }
     setRangeError(null)
     setLoading(true)
+    const requestId = ++requestIdRef.current
     try {
       const result = await api.reports.generate({ startDate: rangeStart, endDate: rangeEnd })
+      if (requestId !== requestIdRef.current) return
       setReport(result)
       setReportRange({ startDate: rangeStart, endDate: rangeEnd })
     } catch (err) {
+      if (requestId !== requestIdRef.current) return
       toast.error(getErrorMessage(err))
     } finally {
-      setLoading(false)
+      if (requestId === requestIdRef.current) setLoading(false)
     }
   }
 

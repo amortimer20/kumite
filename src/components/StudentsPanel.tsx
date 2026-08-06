@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CalendarDays, MoreHorizontal, Pencil, Repeat, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
@@ -131,6 +131,10 @@ export function StudentsPanel() {
   const [lessonsStudent, setLessonsStudent] = useState<Student | null>(null)
   const [studentLessons, setStudentLessons] = useState<Lesson[]>([])
   const [studentLessonsLoading, setStudentLessonsLoading] = useState(false)
+  // Bumped on every lessons fetch so a slow response for a student who was
+  // closed and replaced doesn't render their lessons under the new student's
+  // title — where Delete would then act on the wrong student's lesson.
+  const studentLessonsRequestIdRef = useRef(0)
 
   const [membershipStudent, setMembershipStudent] = useState<Student | null>(null)
 
@@ -327,18 +331,25 @@ export function StudentsPanel() {
 
   async function openLessons(student: Student) {
     setLessonsStudent(student)
+    // Drop any prior student's lessons up front so they can't flash under the
+    // new name while this fetch is in flight.
+    setStudentLessons([])
     setStudentLessonsLoading(true)
+    const requestId = ++studentLessonsRequestIdRef.current
     try {
       const result = await api.lessons.list({ studentId: student.id })
+      if (requestId !== studentLessonsRequestIdRef.current) return
       setStudentLessons(sortByStartTime(result))
     } finally {
-      setStudentLessonsLoading(false)
+      if (requestId === studentLessonsRequestIdRef.current) setStudentLessonsLoading(false)
     }
   }
 
   async function refreshStudentLessons() {
     if (!lessonsStudent) return
+    const requestId = ++studentLessonsRequestIdRef.current
     const result = await api.lessons.list({ studentId: lessonsStudent.id })
+    if (requestId !== studentLessonsRequestIdRef.current) return
     setStudentLessons(sortByStartTime(result))
     // A deleted lesson changes lessonCount, which the delete-student modal
     // relies on to decide whether to offer the archive-vs-delete choice.

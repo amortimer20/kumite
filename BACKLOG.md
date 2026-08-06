@@ -173,18 +173,6 @@ story rather than a bare rename. Best done before the studio has data worth movi
 (The `author`/`description` metadata and the 800x600 default window that used to be in this entry are
 both fixed.)
 
-### Stale-response races in three dialogs
-`SchedulePanel.tsx` guards against this with `lessonsRequestIdRef`; three places that need the same
-guard don't have it. Worst is `StudentMembershipDialog.tsx`, keyed on `student?.id` with no guard: open
-student A (slow query, long payment history), close, open student B, and A's membership, amount owed
-and payment history can land last and render under B's name — and because `membership.id` comes from
-that stale object, a payment recorded from that screen posts to A's membership. Same shape in
-`StudentsPanel.tsx`'s per-student Lessons dialog (A's lessons under B's title, with Delete acting on
-A's) and `ReportsPanel.tsx` (click "This Year" then "This Month"; whichever resolves last wins).
-Relatedly, the membership dialog's effect resets its forms but never clears `membership` /
-`paymentHistory`, so a failed fetch for the newly-opened student shows the previous student's figures
-under the new name.
-
 ### Recurring series edge cases
 Three separate small bugs in `electron/ipc/recurringSeries.ts`. `generatedUntil` is advanced
 unconditionally, including on the path that *skips* an occurrence because of a conflict, so a week
@@ -210,6 +198,26 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### Stale-response races in three dialogs
+`SchedulePanel.tsx` already guarded its lessons fetch with a `lessonsRequestIdRef` counter — bumped per
+request, with responses whose id no longer matches the latest dropped rather than applied. Three other
+places fetched keyed on a changing selection with no such guard; they now use the same pattern.
+`StudentMembershipDialog.tsx` was the important one: open student A (slow query, long payment history),
+close, open student B, and A's membership, amount owed and payment history could land last and render
+under B's name — and because the payment form reads `membership.id` off that stale object, a payment
+recorded there posted to A's membership. `refresh()` now bumps a `requestIdRef` and discards its own
+result if a newer refresh (a student switch, or a mutation's own refresh) has since fired; the open
+effect also clears `membership`/`paymentHistory` up front, so a slow or failed load can no longer leave
+the previous student's figures showing under the new name. `StudentsPanel.tsx`'s per-student Lessons
+dialog got the same guard (and clears `studentLessons` on open) so A's lessons can't render under B's
+title with Delete acting on A's, and `ReportsPanel.tsx`'s `handleGenerate` guards so clicking "This
+Year" then "This Month" can't let the slower earlier range win.
+
+No tests: these are component request-race guards tied to React lifecycle rather than extractable pure
+logic (the existing `SchedulePanel` guard has no test either, and there's no renderer test
+infrastructure), and the dev server can't exercise these panels without `window.api`. Verified by
+typecheck, lint, and the full suite (186 tests) as a regression check.
 
 ### Server-side validation on the handlers that lacked it
 `lessons.ts`, `pos.ts` and `memberships.ts` guarded their input; `students.ts`, `instructors.ts`,
