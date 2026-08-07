@@ -271,6 +271,17 @@ model MembershipCharge {
   periodStart         DateTime?
   periodEnd           DateTime?
   priceCents          Int
+  // "period" | "opening_balance" | "proration" | "extra_lesson". A proper
+  // discriminator rather than parsing `label` for this, since it's read back
+  // for logic (e.g. suggesting the last extra-lesson price charged), not just
+  // displayed.
+  kind                String            @default("period")
+  // Set only on the charges that need explaining because they aren't a plain
+  // period: "Opening balance" for the legacy row above, "Prorated first
+  // month" for a mid-month sign-up's stub, "N extra lesson(s)" for a paid
+  // extra lesson. Left null for ordinary period charges — their periodStart/
+  // periodEnd already say everything there is to say about them.
+  label               String?
   createdAt           DateTime          @default(now())
 
   // Guards against ever double-charging the same period — the one invariant

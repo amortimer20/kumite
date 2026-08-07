@@ -321,6 +321,17 @@ export interface MembershipUsageAdjustmentInput {
   reason?: string | null
 }
 
+// A one-off paid extra lesson: a charge outside the normal per-period
+// billing, the payment that settles it, and the allowance it buys, all
+// recorded atomically. See "Non-traditional membership fees" in BACKLOG.md.
+export interface MembershipExtraLessonInput {
+  priceCents: number
+  lessonCount: number
+  paidOn: string
+  method?: PaymentMethod | null
+  notes?: string | null
+}
+
 export interface StudentMembership {
   id: string
   studentId: string
@@ -350,10 +361,14 @@ export interface StudentMembership {
   // see amountOwedCents below for how that's derived.
   nextDueDate: string
   status: MembershipStatus
-  // (priorChargesCents + periods elapsed since startDate x effectivePriceCents)
-  // - (sum of all payments), floored at 0. A split payment leaves the remainder
-  // here instead of silently reading as "paid in full."
+  // (everything ever charged) - (sum of all payments), floored at 0 — see the
+  // MembershipCharge ledger. A split payment leaves the remainder here
+  // instead of silently reading as "paid in full."
   amountOwedCents: number
+  // Price of the most recent paid extra lesson charged to this membership, or
+  // null if none yet — pre-fills the "charge for an extra lesson" form so
+  // staff aren't retyping the same amount from memory each time.
+  lastExtraLessonPriceCents: number | null
   // Non-cancelled lessons in the current period, plus usage adjustments. A
   // lesson counts as soon as it's scheduled — only cancelling it releases
   // the slot — so nothing has to be marked "completed" for this to be accurate.
@@ -563,9 +578,17 @@ export interface Api {
     listActive(): Promise<StudentMembershipWithStudent[]>
     // Starts a brand-new membership; throws if the student already has an
     // active one (use update() to change plans while staying enrolled).
+    // prorationStubCents materializes a one-off charge for a mid-month
+    // sign-up's partial first month — see suggestProratedChargeCents in
+    // src/lib/membershipFormat.ts for how the UI suggests one.
     assign(
       studentId: string,
-      input: { planId: string; priceOverrideCents?: number | null; startDate: string },
+      input: {
+        planId: string
+        priceOverrideCents?: number | null
+        startDate: string
+        prorationStubCents?: number | null
+      },
     ): Promise<StudentMembership>
     update(
       id: string,
@@ -579,6 +602,10 @@ export interface Api {
     // app — delete and re-add rather than editing history), so a payment
     // entered with a mistake is just removed and re-recorded correctly.
     deletePayment(paymentId: string): Promise<StudentMembership>
+    // The paid-extra-lesson flow: charge + payment + allowance in one atomic
+    // action. Distinct from addUsageAdjustment below, which stays the tool for
+    // a genuinely free/comped bonus lesson (no money involved).
+    chargeExtraLesson(id: string, input: MembershipExtraLessonInput): Promise<StudentMembership>
     addUsageAdjustment(id: string, input: MembershipUsageAdjustmentInput): Promise<StudentMembership>
     // Every payment across every membership this student has ever had
     // (active or long since cancelled), newest first.

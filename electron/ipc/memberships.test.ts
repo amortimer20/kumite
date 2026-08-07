@@ -15,6 +15,7 @@ const {
   assignMembership,
   cancelActiveMembershipForStudent,
   cancelMembership,
+  chargeExtraLesson,
   deleteMembershipPayment,
   deleteMembershipPlan,
   getMembershipForStudent,
@@ -62,6 +63,128 @@ describe('assignMembership', () => {
     expect(membership.studentId).toBe(student.id)
     expect(membership.planId).toBe(plan.id)
     expect(membership.active).toBe(true)
+  })
+
+  // Non-traditional membership fees: a mid-month sign-up's prorated first
+  // partial month, materialized as a one-off charge alongside the first real
+  // period (started "now", so exactly one period has already elapsed).
+  describe('with a proration stub', () => {
+    it('materializes it as a one-off charge on top of the first period', async () => {
+      const student = await makeStudent()
+      const plan = await mockPrisma.membershipPlan.create({
+        data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+      })
+      const membership = await assignMembership(student.id, {
+        planId: plan.id,
+        startDate: new Date().toISOString(),
+        prorationStubCents: 3_871,
+      })
+
+      expect(membership.amountOwedCents).toBe(3_871 + 10_000) // stub + the first full period
+
+      const charges = await mockPrisma.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+      const stub = charges.find((c) => c.kind === 'proration')
+      expect(stub?.priceCents).toBe(3_871)
+      expect(stub?.periodStart).toBeNull() // a one-off, not tied to a real period
+      expect(stub?.label).toBe('Prorated first month')
+    })
+
+    it('rejects a non-positive amount', async () => {
+      const student = await makeStudent()
+      const plan = await makePlan()
+      await expect(
+        assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString(), prorationStubCents: 0 }),
+      ).rejects.toThrow('greater than zero')
+    })
+
+    it('creates no stub when omitted, same as before this feature existed', async () => {
+      const student = await makeStudent()
+      const plan = await makePlan()
+      const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
+      const charges = await mockPrisma.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+      expect(charges.some((c) => c.kind === 'proration')).toBe(false)
+    })
+  })
+})
+
+// The paid-extra-lesson flow: a charge, a matching payment, and a usage
+// allowance, all in one call.
+describe('chargeExtraLesson', () => {
+  it('charges the price, records a matching payment, and grants the lesson allowance atomically', async () => {
+    const student = await makeStudent()
+    const plan = await makePlan({ includedPrivateLessons: 4 })
+    const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
+    // Paid up on dues before the extra lesson, so any change afterward is
+    // attributable to the extra lesson alone.
+    await recordMembershipPayment(membership.id, { amountCents: 8_000, paidOn: new Date().toISOString() })
+    const before = await getMembershipForStudent(student.id)
+    expect(before?.amountOwedCents).toBe(0)
+    expect(before?.privateLessonsRemaining).toBe(4)
+
+    const updated = await chargeExtraLesson(membership.id, {
+      priceCents: 5_000,
+      lessonCount: 2,
+      paidOn: new Date().toISOString(),
+      method: 'cash',
+      notes: null,
+    })
+
+    // The charge and its payment are for the same amount, so dues owed is
+    // unaffected — this tops up the lesson allowance, it doesn't change what's
+    // owed for membership dues.
+    expect(updated.amountOwedCents).toBe(0)
+    expect(updated.privateLessonsRemaining).toBe(6) // 4 included + 2 extra
+  })
+
+  it('records the payment so it shows up in payment history', async () => {
+    const student = await makeStudent()
+    const plan = await makePlan()
+    const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
+
+    await chargeExtraLesson(membership.id, {
+      priceCents: 3_000,
+      lessonCount: 1,
+      paidOn: new Date().toISOString(),
+      method: 'card',
+      notes: 'extra Saturday lesson',
+    })
+
+    const history = await getPaymentHistoryForStudent(student.id)
+    expect(history.some((p) => p.amountCents === 3_000 && p.method === 'card')).toBe(true)
+  })
+
+  it('pre-fills lastExtraLessonPriceCents from the most recent extra-lesson charge', async () => {
+    const student = await makeStudent()
+    const plan = await makePlan()
+    const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
+    expect((await getMembershipForStudent(student.id))?.lastExtraLessonPriceCents).toBeNull()
+
+    await chargeExtraLesson(membership.id, { priceCents: 4_000, lessonCount: 1, paidOn: new Date().toISOString() })
+    expect((await getMembershipForStudent(student.id))?.lastExtraLessonPriceCents).toBe(4_000)
+
+    await chargeExtraLesson(membership.id, { priceCents: 6_000, lessonCount: 1, paidOn: new Date().toISOString() })
+    expect((await getMembershipForStudent(student.id))?.lastExtraLessonPriceCents).toBe(6_000)
+  })
+
+  it('rejects a non-positive price', async () => {
+    const student = await makeStudent()
+    const plan = await makePlan()
+    const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
+    await expect(
+      chargeExtraLesson(membership.id, { priceCents: 0, lessonCount: 1, paidOn: new Date().toISOString() }),
+    ).rejects.toThrow('greater than zero')
+  })
+
+  it('rejects a non-positive or fractional lesson count', async () => {
+    const student = await makeStudent()
+    const plan = await makePlan()
+    const membership = await assignMembership(student.id, { planId: plan.id, startDate: new Date().toISOString() })
+    await expect(
+      chargeExtraLesson(membership.id, { priceCents: 5_000, lessonCount: 0, paidOn: new Date().toISOString() }),
+    ).rejects.toThrow('at least 1')
+    await expect(
+      chargeExtraLesson(membership.id, { priceCents: 5_000, lessonCount: 1.5, paidOn: new Date().toISOString() }),
+    ).rejects.toThrow('at least 1')
   })
 })
 

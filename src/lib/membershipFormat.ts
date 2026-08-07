@@ -69,3 +69,15 @@ export function clampNonNegativeInt(value: string) {
   return Math.min(MAX_INT_COLUMN, Math.max(0, parsed))
 }
 
+// A suggested (not enforced — the field stays editable) stub for a mid-month
+// sign-up's partial first month: round(monthlyPrice x daysRemaining /
+// daysInMonth), counting the join day itself as one of the remaining days
+// (joining on the last day of a 30-day month still owes something for that
+// day, not zero). `isoDate` is the chosen start date, "yyyy-mm-dd".
+export function suggestProratedChargeCents(monthlyPriceCents: number, isoDate: string): number {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const daysInMonth = new Date(year, month, 0).getDate() // day 0 of next month = last day of this one
+  const daysRemaining = daysInMonth - day + 1
+  return Math.round((monthlyPriceCents * daysRemaining) / daysInMonth)
+}
+

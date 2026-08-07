@@ -45,3 +45,15 @@ export function startOfYearIso(d: Date = new Date()) {
 export function endOfYearIso(d: Date = new Date()) {
   return dateToIso(new Date(d.getFullYear(), 11, 31))
 }
+
+// Used by membership proration: a mid-month sign-up's billing anchor moves to
+// the 1st of the month after the one they're joining in, per isoDate to avoid
+// the UTC-midnight parsing pitfall this file exists to guard against.
+export function startOfNextMonthIso(isoDate: string) {
+  const [year, month] = isoDate.split('-').map(Number)
+  return dateToIso(new Date(year, month, 1)) // `month` (1-indexed) is next month's 0-indexed value
+}
+
+export function isFirstOfMonthIso(isoDate: string) {
+  return isoDate.endsWith('-01')
+}

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_INT_COLUMN, clampNonNegativeInt, dollarsToCents, parsePriceToCents } from './membershipFormat'
+import {
+  MAX_INT_COLUMN,
+  clampNonNegativeInt,
+  dollarsToCents,
+  parsePriceToCents,
+  suggestProratedChargeCents,
+} from './membershipFormat'
 
 describe('parsePriceToCents', () => {
   it('parses a normal price', () => {
@@ -81,5 +87,32 @@ describe('clampNonNegativeInt', () => {
 
   it('clamps a count past the Int column ceiling', () => {
     expect(clampNonNegativeInt('9999999999')).toBe(MAX_INT_COLUMN)
+  })
+})
+
+describe('suggestProratedChargeCents', () => {
+  it('charges the full price when joining on the 1st (nothing to prorate)', () => {
+    expect(suggestProratedChargeCents(10_000, '2025-04-01')).toBe(10_000)
+  })
+
+  // The join day itself counts as one of the remaining days — joining on the
+  // last day of the month still owes something for that day, not $0.
+  it('charges roughly a single day\'s worth when joining on the last day of the month', () => {
+    // April has 30 days; joining on the 30th leaves 1 of 30 days remaining.
+    expect(suggestProratedChargeCents(10_000, '2025-04-30')).toBe(333) // round(10000 * 1/30)
+  })
+
+  it('prorates a mid-month join against the actual days in that month', () => {
+    // January has 31 days; joining on the 20th leaves 12 of 31 days remaining.
+    expect(suggestProratedChargeCents(10_000, '2025-01-20')).toBe(3_871) // round(10000 * 12/31)
+  })
+
+  it('uses the correct day count for February in a leap year', () => {
+    // 2024 is a leap year: February has 29 days; joining on the 15th leaves 15.
+    expect(suggestProratedChargeCents(10_000, '2024-02-15')).toBe(5_172) // round(10000 * 15/29)
+  })
+
+  it('prorates a $0 (comp) plan to $0', () => {
+    expect(suggestProratedChargeCents(0, '2025-01-20')).toBe(0)
   })
 })

@@ -10,6 +10,7 @@ import type {
   LessonInput,
   LessonListFilter,
   LessonStatus,
+  MembershipExtraLessonInput,
   MembershipPaymentInput,
   MembershipPlanInput,
   MembershipUsageAdjustmentInput,
@@ -77,13 +78,17 @@ const api: Api = {
   studentMemberships: {
     getForStudent: (studentId: string) => ipcRenderer.invoke('studentMemberships:getForStudent', studentId),
     listActive: () => ipcRenderer.invoke('studentMemberships:listActive'),
-    assign: (studentId: string, input: { planId: string; priceOverrideCents?: number | null; startDate: string }) =>
-      ipcRenderer.invoke('studentMemberships:assign', studentId, input),
+    assign: (
+      studentId: string,
+      input: { planId: string; priceOverrideCents?: number | null; startDate: string; prorationStubCents?: number | null },
+    ) => ipcRenderer.invoke('studentMemberships:assign', studentId, input),
     update: (id: string, input: { planId?: string; priceOverrideCents?: number | null }) =>
       ipcRenderer.invoke('studentMemberships:update', id, input),
     cancel: (id: string) => ipcRenderer.invoke('studentMemberships:cancel', id),
     recordPayment: (id: string, input: MembershipPaymentInput) => ipcRenderer.invoke('studentMemberships:recordPayment', id, input),
     deletePayment: (paymentId: string) => ipcRenderer.invoke('studentMemberships:deletePayment', paymentId),
+    chargeExtraLesson: (id: string, input: MembershipExtraLessonInput) =>
+      ipcRenderer.invoke('studentMemberships:chargeExtraLesson', id, input),
     addUsageAdjustment: (id: string, input: MembershipUsageAdjustmentInput) =>
       ipcRenderer.invoke('studentMemberships:addUsageAdjustment', id, input),
     getPaymentHistory: (studentId: string) => ipcRenderer.invoke('studentMemberships:getPaymentHistory', studentId),

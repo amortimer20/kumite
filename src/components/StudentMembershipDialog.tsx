@@ -11,8 +11,9 @@ import {
   PAYMENT_METHOD_LABEL,
   formatCents,
   parsePriceToCents,
+  suggestProratedChargeCents,
 } from '@/lib/membershipFormat'
-import { isoDateToInstant, todayIso } from '@/lib/isoDate'
+import { isFirstOfMonthIso, isoDateToInstant, startOfNextMonthIso, todayIso } from '@/lib/isoDate'
 import {
   DEFAULT_PAYMENT_HISTORY_RANGE,
   PAYMENT_HISTORY_RANGES,
@@ -21,6 +22,7 @@ import {
 } from '@/lib/paymentHistoryFilter'
 import { getErrorMessage } from '@/lib/errors'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -46,9 +48,17 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-const EMPTY_ASSIGN_FORM = { planId: '', priceOverride: '', startDate: todayIso() }
+// A function rather than a module-level constant — todayIso() evaluated once
+// at module load would go stale on a front-desk machine left running for
+// days, and would always be wrong for a mid-month proration suggestion.
+function emptyAssignForm() {
+  return { planId: '', priceOverride: '', startDate: todayIso(), prorate: false, prorationAmount: '' }
+}
 const EMPTY_PAYMENT_FORM = { amount: '', paidOn: todayIso(), method: '' as PaymentMethod | '', notes: '' }
 const EMPTY_ADJUSTMENT_FORM = { delta: '1', reason: '' }
+function emptyExtraLessonForm() {
+  return { price: '', lessonCount: '1', paidOn: todayIso(), method: '' as PaymentMethod | '', notes: '' }
+}
 
 export function StudentMembershipDialog({
   student,
@@ -69,7 +79,7 @@ export function StudentMembershipDialog({
   // `membership.id`, a payment then posts to the wrong student's membership.
   const requestIdRef = useRef(0)
 
-  const [assignForm, setAssignForm] = useState(EMPTY_ASSIGN_FORM)
+  const [assignForm, setAssignForm] = useState(emptyAssignForm)
   const [assignError, setAssignError] = useState<string | null>(null)
   // Guards against a fast double-click firing two assign requests before
   // either resolves — the server also closes this race with a transaction,
@@ -81,16 +91,20 @@ export function StudentMembershipDialog({
   const [changingPlan, setChangingPlan] = useState(false)
 
   // Guards against a double-clicked submit creating two records. The backend
-  // has no dedup for payments or adjustments, so a second click while the first
-  // is in flight genuinely posts twice.
+  // has no dedup for payments, adjustments, or extra-lesson charges, so a
+  // second click while the first is in flight genuinely posts twice.
   const [recordingPayment, setRecordingPayment] = useState(false)
   const [addingAdjustment, setAddingAdjustment] = useState(false)
+  const [chargingExtraLesson, setChargingExtraLesson] = useState(false)
 
   const [paymentForm, setPaymentForm] = useState(EMPTY_PAYMENT_FORM)
   const [paymentError, setPaymentError] = useState<string | null>(null)
 
   const [adjustmentForm, setAdjustmentForm] = useState(EMPTY_ADJUSTMENT_FORM)
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null)
+
+  const [extraLessonForm, setExtraLessonForm] = useState(emptyExtraLessonForm)
+  const [extraLessonError, setExtraLessonError] = useState<string | null>(null)
 
   async function refresh(studentId: string) {
     const requestId = ++requestIdRef.current
@@ -120,6 +134,13 @@ export function StudentMembershipDialog({
         method: '',
         notes: '',
       })
+      // Pre-fills a sanity reference rather than making staff retype the same
+      // amount from memory — deliberately not a plan-level default rate,
+      // since the studio has no fixed price for an extra lesson.
+      setExtraLessonForm((f) => ({
+        ...f,
+        price: m.lastExtraLessonPriceCents != null ? (m.lastExtraLessonPriceCents / 100).toFixed(2) : '',
+      }))
     }
     return m
   }
@@ -131,11 +152,13 @@ export function StudentMembershipDialog({
     // load can never leave them showing under the newly-opened student's name.
     setMembership(null)
     setPaymentHistory([])
-    setAssignForm(EMPTY_ASSIGN_FORM)
+    setAssignForm(emptyAssignForm())
     setAssignError(null)
     setPaymentError(null)
     setAdjustmentForm(EMPTY_ADJUSTMENT_FORM)
     setAdjustmentError(null)
+    setExtraLessonForm(emptyExtraLessonForm())
+    setExtraLessonError(null)
     setHistoryRange(DEFAULT_PAYMENT_HISTORY_RANGE)
     // refresh() bumps requestIdRef synchronously, so reading it right after
     // captures this load's id for guarding the plans/loading updates too.
@@ -151,6 +174,25 @@ export function StudentMembershipDialog({
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [student?.id])
+
+  // Suggests proration for a mid-month sign-up on a monthly plan, matching
+  // the studio's "billed on the 1st" norm — defaults to prorating rather than
+  // requiring staff to opt in, since that's meant to be the normal case.
+  // Resets only when the plan or date actually changes, so editing the
+  // suggested amount (or the price override) afterward isn't clobbered by
+  // this effect re-running.
+  useEffect(() => {
+    const plan = plans.find((p) => p.id === assignForm.planId)
+    const shouldProrate = plan?.billingFrequency === 'monthly' && !!assignForm.startDate && !isFirstOfMonthIso(assignForm.startDate)
+    if (!shouldProrate) {
+      setAssignForm((f) => (f.prorate ? { ...f, prorate: false } : f))
+      return
+    }
+    setAssignForm((f) => {
+      const priceCents = parsePriceToCents(f.priceOverride) ?? plan.priceCents
+      return { ...f, prorate: true, prorationAmount: (suggestProratedChargeCents(priceCents, f.startDate) / 100).toFixed(2) }
+    })
+  }, [assignForm.planId, assignForm.startDate, plans])
 
   async function handleAssign(e: React.FormEvent) {
     e.preventDefault()
@@ -172,12 +214,28 @@ export function StudentMembershipDialog({
       setAssignError('Enter a valid custom price, or leave it blank to use the plan price.')
       return
     }
+    // assignForm.prorate can only be true while the proration block above is
+    // actually rendered (see showProration), so it's already a reliable
+    // signal here without recomputing the mid-month check.
+    let prorationStubCents: number | null = null
+    let effectiveStartDate = assignForm.startDate
+    if (assignForm.prorate) {
+      prorationStubCents = parsePriceToCents(assignForm.prorationAmount)
+      if (prorationStubCents === null || prorationStubCents <= 0) {
+        setAssignError('Enter a valid prorated amount greater than zero, or uncheck proration.')
+        return
+      }
+      // The agreed stub covers through the end of this month; billing proper
+      // starts on the 1st of the next one — see suggestProratedChargeCents.
+      effectiveStartDate = startOfNextMonthIso(assignForm.startDate)
+    }
     setAssigning(true)
     try {
       await api.studentMemberships.assign(student.id, {
         planId: assignForm.planId,
         priceOverrideCents,
-        startDate: isoDateToInstant(assignForm.startDate),
+        startDate: isoDateToInstant(effectiveStartDate),
+        prorationStubCents,
       })
       toast.success('Membership assigned.')
       await refresh(student.id)
@@ -185,6 +243,42 @@ export function StudentMembershipDialog({
       toast.error(getErrorMessage(err))
     } finally {
       setAssigning(false)
+    }
+  }
+
+  async function handleChargeExtraLesson(e: React.FormEvent) {
+    e.preventDefault()
+    if (!membership || !student || chargingExtraLesson) return
+    setExtraLessonError(null)
+    const priceCents = parsePriceToCents(extraLessonForm.price)
+    if (priceCents === null || priceCents <= 0) {
+      setExtraLessonError('Enter a price greater than zero.')
+      return
+    }
+    const lessonCount = Number.parseInt(extraLessonForm.lessonCount, 10)
+    if (!Number.isInteger(lessonCount) || lessonCount <= 0) {
+      setExtraLessonError('Enter how many extra lessons this covers (at least 1).')
+      return
+    }
+    if (!extraLessonForm.paidOn) {
+      setExtraLessonError('Choose a paid-on date.')
+      return
+    }
+    setChargingExtraLesson(true)
+    try {
+      await api.studentMemberships.chargeExtraLesson(membership.id, {
+        priceCents,
+        lessonCount,
+        method: extraLessonForm.method || null,
+        paidOn: isoDateToInstant(extraLessonForm.paidOn),
+        notes: extraLessonForm.notes.trim() || null,
+      })
+      toast.success('Extra lesson charged.')
+      await refresh(student.id)
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    } finally {
+      setChargingExtraLesson(false)
     }
   }
 
@@ -305,6 +399,13 @@ export function StudentMembershipDialog({
 
   const visiblePayments = filterPaymentsByRange(paymentHistory, historyRange)
 
+  // Drives whether the proration block below is shown at all — only makes
+  // sense for a monthly plan starting mid-month. See the effect above for
+  // how assignForm.prorate/prorationAmount default once this is true.
+  const assignSelectedPlan = plans.find((p) => p.id === assignForm.planId)
+  const showProration =
+    assignSelectedPlan?.billingFrequency === 'monthly' && !!assignForm.startDate && !isFirstOfMonthIso(assignForm.startDate)
+
   return (
     <Dialog open={student !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
@@ -353,6 +454,35 @@ export function StudentMembershipDialog({
                     />
                   </div>
                 </div>
+                {showProration && (
+                  <div className="rounded-md border border-border bg-muted/40 p-3">
+                    <label className="flex items-center gap-2 text-sm font-medium">
+                      <Checkbox
+                        checked={assignForm.prorate}
+                        onCheckedChange={(checked) => setAssignForm((f) => ({ ...f, prorate: checked === true }))}
+                      />
+                      Prorate their first partial month
+                    </label>
+                    {assignForm.prorate && (
+                      <div className="mt-2 flex items-end gap-2">
+                        <div className="w-32">
+                          <Label className="mb-1">Prorated charge</Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={assignForm.prorationAmount}
+                            onChange={(e) => setAssignForm((f) => ({ ...f, prorationAmount: e.target.value }))}
+                          />
+                        </div>
+                        <p className="pb-2 text-sm text-muted-foreground">
+                          Then billed normally starting{' '}
+                          {new Date(`${startOfNextMonthIso(assignForm.startDate)}T00:00:00`).toLocaleDateString()}.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {assignError && <p className="text-sm text-destructive">{assignError}</p>}
                 <div className="flex justify-end">
                   <Button type="submit" disabled={plans.length === 0 || assigning}>Assign Membership</Button>
@@ -530,6 +660,58 @@ export function StudentMembershipDialog({
 
             {membership && (
               <>
+                <form className="flex flex-col gap-2 border-t border-border pt-3" onSubmit={handleChargeExtraLesson}>
+                  <Label>Charge for an extra lesson</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      className="w-28"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="Price"
+                      value={extraLessonForm.price}
+                      onChange={(e) => setExtraLessonForm((f) => ({ ...f, price: e.target.value }))}
+                    />
+                    <Input
+                      className="w-20"
+                      type="number"
+                      min="1"
+                      step="1"
+                      title="Number of lessons"
+                      value={extraLessonForm.lessonCount}
+                      onChange={(e) => setExtraLessonForm((f) => ({ ...f, lessonCount: e.target.value }))}
+                    />
+                    <Input
+                      className="w-40"
+                      type="date"
+                      title="Paid on"
+                      value={extraLessonForm.paidOn}
+                      onChange={(e) => setExtraLessonForm((f) => ({ ...f, paidOn: e.target.value }))}
+                    />
+                    <Select
+                      value={extraLessonForm.method}
+                      onValueChange={(v) => setExtraLessonForm((f) => ({ ...f, method: v as PaymentMethod }))}
+                    >
+                      <SelectTrigger className="w-36">
+                        <SelectValue placeholder="Method (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PAYMENT_METHODS.map((m) => (
+                          <SelectItem key={m} value={m}>{PAYMENT_METHOD_LABEL[m]}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      className="w-48"
+                      placeholder="Notes (optional)"
+                      value={extraLessonForm.notes}
+                      onChange={(e) => setExtraLessonForm((f) => ({ ...f, notes: e.target.value }))}
+                    />
+                    <Button type="submit" variant="outline" disabled={chargingExtraLesson}>Charge</Button>
+                  </div>
+                  {extraLessonError && <p className="text-sm text-destructive">{extraLessonError}</p>}
+                </form>
+
                 <form className="flex items-end gap-2 border-t border-border pt-3" onSubmit={handleAddAdjustment}>
                   <div className="w-24">
                     <Label className="mb-1">+/- lessons</Label>
@@ -542,7 +724,7 @@ export function StudentMembershipDialog({
                   <div className="flex-1">
                     <Label className="mb-1">Reason (optional)</Label>
                     <Input
-                      placeholder="e.g. bonus lesson, our scheduling error"
+                      placeholder="e.g. free bonus lesson, our scheduling error"
                       value={adjustmentForm.reason}
                       onChange={(e) => setAdjustmentForm((f) => ({ ...f, reason: e.target.value }))}
                     />

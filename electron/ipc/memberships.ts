@@ -9,6 +9,7 @@ import {
   elapsedPeriods,
 } from '../membershipLogic.ts'
 import type {
+  MembershipExtraLessonInput,
   MembershipPaymentInput,
   MembershipPlanInput,
   MembershipUsageAdjustmentInput,
@@ -47,6 +48,8 @@ async function chargesToMaterialize(client: PrismaClientOrTx, membership: Charge
       periodStart: null,
       periodEnd: null,
       priceCents: membership.priorChargesCents,
+      kind: 'opening_balance',
+      label: 'Opening balance',
     })
   }
 
@@ -151,6 +154,13 @@ async function serializeStudentMembership<T extends MembershipForSerialize>(memb
     membership.plan.includedPrivateLessons,
   )
 
+  // Most-recently-charged extra lesson, so the "charge for an extra lesson"
+  // form can pre-fill a sanity reference instead of staff retyping the same
+  // amount from memory every time.
+  const lastExtraLessonCharge = charges
+    .filter((c) => c.kind === 'extra_lesson')
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]
+
   const { plan, ...rest } = membership
   return {
     ...rest,
@@ -161,6 +171,7 @@ async function serializeStudentMembership<T extends MembershipForSerialize>(memb
     nextDueDate,
     status,
     amountOwedCents: owedCents,
+    lastExtraLessonPriceCents: lastExtraLessonCharge?.priceCents ?? null,
     privateLessonsUsed,
     privateLessonsRemaining,
   }
@@ -316,8 +327,22 @@ export async function listActiveMemberships() {
 
 export async function assignMembership(
   studentId: string,
-  input: { planId: string; priceOverrideCents?: number | null; startDate: string },
+  input: {
+    planId: string
+    priceOverrideCents?: number | null
+    startDate: string
+    // Set only when the front desk is prorating a mid-month sign-up's partial
+    // first month — a suggested amount the user can override, never computed
+    // or re-validated here beyond "greater than zero" (see
+    // suggestProratedChargeCents in src/lib/membershipFormat.ts for how the
+    // UI arrives at the suggestion). Materialized as a one-off MembershipCharge
+    // rather than a real period, since it doesn't correspond to one.
+    prorationStubCents?: number | null
+  },
 ) {
+  if (input.prorationStubCents != null && input.prorationStubCents <= 0) {
+    throw new Error('The prorated amount must be greater than zero.')
+  }
   // Check-then-create, but inside one transaction rather than two separate
   // round trips — SQLite's single-writer locking means a second call
   // racing this one (e.g. a double-clicked submit button) can't commit
@@ -330,7 +355,7 @@ export async function assignMembership(
       throw new Error('This student already has an active membership. Change their plan instead of assigning a new one.')
     }
     const plan = await tx.membershipPlan.findUniqueOrThrow({ where: { id: input.planId } })
-    return tx.studentMembership.create({
+    const created = await tx.studentMembership.create({
       data: {
         studentId,
         planId: input.planId,
@@ -343,6 +368,65 @@ export async function assignMembership(
       },
       include: studentMembershipInclude,
     })
+    if (input.prorationStubCents) {
+      await tx.membershipCharge.create({
+        data: {
+          studentMembershipId: created.id,
+          periodStart: null,
+          periodEnd: null,
+          priceCents: input.prorationStubCents,
+          kind: 'proration',
+          label: 'Prorated first month',
+        },
+      })
+    }
+    return created
+  })
+  return serializeStudentMembership(membership)
+}
+
+// The paid-extra-lesson flow: a one-off charge outside the normal per-period
+// billing, plus the payment that settles it and the allowance it buys, all in
+// one transaction so the three legs can't be left half-done. The charge leg
+// is not optional — a payment with no matching charge would be read as
+// prepayment toward next month's dues and silently reduce what's owed then,
+// the same phantom-credit failure mode "Membership billing no longer re-bills
+// the past" (see Done) fixed for plan switches.
+export async function chargeExtraLesson(id: string, input: MembershipExtraLessonInput) {
+  if (input.priceCents <= 0) {
+    throw new Error('Price must be greater than zero.')
+  }
+  if (!Number.isInteger(input.lessonCount) || input.lessonCount <= 0) {
+    throw new Error('Enter how many extra lessons this covers (at least 1).')
+  }
+  const label = `${input.lessonCount} extra lesson${input.lessonCount === 1 ? '' : 's'}`
+  const membership = await prisma.$transaction(async (tx) => {
+    await tx.membershipCharge.create({
+      data: {
+        studentMembershipId: id,
+        periodStart: null,
+        periodEnd: null,
+        priceCents: input.priceCents,
+        kind: 'extra_lesson',
+        label,
+      },
+    })
+    await tx.membershipPayment.create({
+      data: {
+        studentMembershipId: id,
+        amountCents: input.priceCents,
+        method: input.method,
+        paidOn: new Date(input.paidOn),
+        notes: input.notes,
+      },
+    })
+    // Period-scoped like any other adjustment, so an unused extra lesson still
+    // expires at period end rather than rolling forward — same
+    // use-it-or-lose-it behaviour as a free bonus lesson.
+    await tx.membershipUsageAdjustment.create({
+      data: { studentMembershipId: id, delta: input.lessonCount, reason: label },
+    })
+    return tx.studentMembership.findUniqueOrThrow({ where: { id }, include: studentMembershipInclude })
   })
   return serializeStudentMembership(membership)
 }
@@ -440,8 +524,11 @@ export function registerMembershipHandlers() {
   ipcMain.handle('studentMemberships:listActive', () => listActiveMemberships())
   ipcMain.handle(
     'studentMemberships:assign',
-    (_event, studentId: string, input: { planId: string; priceOverrideCents?: number | null; startDate: string }) =>
-      assignMembership(studentId, input),
+    (
+      _event,
+      studentId: string,
+      input: { planId: string; priceOverrideCents?: number | null; startDate: string; prorationStubCents?: number | null },
+    ) => assignMembership(studentId, input),
   )
   ipcMain.handle(
     'studentMemberships:update',
@@ -452,6 +539,9 @@ export function registerMembershipHandlers() {
     recordMembershipPayment(id, input),
   )
   ipcMain.handle('studentMemberships:deletePayment', (_event, paymentId: string) => deleteMembershipPayment(paymentId))
+  ipcMain.handle('studentMemberships:chargeExtraLesson', (_event, id: string, input: MembershipExtraLessonInput) =>
+    chargeExtraLesson(id, input),
+  )
   ipcMain.handle(
     'studentMemberships:addUsageAdjustment',
     (_event, id: string, input: MembershipUsageAdjustmentInput) => addMembershipUsageAdjustment(id, input),

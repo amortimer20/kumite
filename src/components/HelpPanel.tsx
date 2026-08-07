@@ -135,6 +135,20 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   hidden by the current range.
                 </p>
                 <p>
+                  Signing up mid-month on a monthly plan offers to{' '}
+                  <strong>prorate their first partial month</strong> — checked by default, with a
+                  suggested charge for the days remaining that you can adjust or turn off. Billing then
+                  starts normally on the 1st of the following month, matching the studio's usual billing
+                  day.
+                </p>
+                <p>
+                  <strong>Charge for an extra lesson</strong> records a paid lesson outside normal
+                  membership dues in one step — the price, the payment, and the added lesson to their
+                  allowance for the current period (it doesn't carry over once the period ends). This is
+                  different from the plain <strong>+/- lessons</strong> adjustment below it, which is for
+                  a free/comped bonus lesson or a correction — no money involved.
+                </p>
+                <p>
                   Deleting a student who has lessons, a recurring series, or any membership history
                   archives them instead of deleting, so that history stays attached to them — you'll
                   be offered the choice.

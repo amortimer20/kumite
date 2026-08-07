@@ -22,88 +22,6 @@ untested: do a real Windows build/install/upgrade pass to confirm it works as ex
 whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
-## Non-traditional membership fees — paid extra lessons and proration
-The last feature-shaped gap before the app is feature-complete for its first iteration. The business
-rules are now settled (answers from the studio owner below), so this is a design ready to build rather
-than an open question.
-
-**The rules, as answered.** Reference membership is one lesson per week, billed monthly.
-- Membership dues are still due on the normal billing date, regardless of any paid extra lessons.
-- Extra lessons do **not** carry over into the next month — use it or lose it.
-- There are **no** prepaid memberships. "Paying weekly" just means a weekly-billed membership, which
-  the app already supports, so there is nothing to build for this.
-- **Pro rate**: a student can be charged for a portion of a month, so that from then on they are
-  billed at the start of each month like everyone else.
-- Students are normally billed on the **1st**, and that should be the default when setting up a
-  membership.
-
-**What already works.** Use-it-or-lose-it is how the app behaves today, by design rather than by
-accident: `scheduledLessons` is counted only within `[periodStart, periodEnd)`
-(`electron/ipc/memberships.ts`), usage adjustments are filtered to the same window
-(`electron/membershipLogic.ts` `computeUsage`), and remaining lessons are recomputed from the plan each
-period with no stored balance that could roll forward. So the carry-over question needs no work at all.
-
-**What's actually missing.** A *paid* extra lesson has no home. `MembershipUsageAdjustment` is only
-`delta` + `reason` — no amount, no payment method, and it never reaches Reports. So today staff have to
-pick one half-measure: ring it up as a POS sale (money is recorded, but the lesson then eats into the
-student's included allowance) or add a bonus adjustment (allowance is right, but the income is invisible
-to Reports entirely). The second silently under-reports revenue, which is the worse of the two.
-
-**Design — paid extra lessons.** One dialog, one atomic operation, three legs, all reusing mechanisms
-that already exist:
-
-| Leg | Mechanism | Why it's needed |
-| --- | --- | --- |
-| Charge | a one-off `MembershipCharge` row | keeps owed = (ever charged - ever paid) correct, and shows up as its own dated line rather than folded into a total |
-| Payment | a `MembershipPayment` row | money lands in the existing membership-dues revenue line |
-| Allowance | a positive `MembershipUsageAdjustment` delta | +N lessons, already period-scoped so it expires correctly |
-
-The charge leg is **not optional**. A payment with no matching charge is read as prepayment toward
-dues and silently reduces what the student owes next month — the same phantom-credit failure mode as
-the plan-switch bug fixed in "Membership billing no longer re-bills the past" below. All three legs
-must be written in one transaction so staff can't half-complete it.
-
-Routing the payment through `MembershipPayment` also answers where the money shows up: it flows into
-the membership-dues line Reports already has, so no third top-level revenue source is needed and the
-existing include-toggles and CSV export stay as they are.
-
-Price is typed in per transaction — the studio has no fixed rate, and it flexes by student and by how
-many lessons are being bought. This matches the precedent already set by
-`StudentMembership.priceOverrideCents`, so it isn't a new pricing philosophy. Two guardrails:
-- Validate greater than zero, per the price-validation fix already in Done. A free-typed amount with
-  no reference point on screen is exactly where a $5-for-$50 typo hides unnoticed.
-- Pre-fill with the last extra-lesson amount charged to that student. No schema cost (it's already in
-  the data), it removes the retyping, and it gives staff a sanity reference. Deliberately **not** a
-  plan-level default rate — that's speculative until a standard rate actually emerges, and the
-  pre-fill covers the ergonomics without committing to a rule.
-
-**Design — proration.** A suggested value the user can override.
-- Suggest `round(monthlyPrice x daysRemaining / daysInMonth)`, pre-filled and editable. Chosen over
-  prorating by scheduled lesson count because it's explainable to a parent at the desk and doesn't
-  depend on the schedule already existing at signup.
-- Set `startDate` to the **1st of the next month** and materialize the agreed stub as a one-off
-  `MembershipCharge` row (no `periodStart`/`periodEnd`, same shape as the ledger's own legacy
-  opening-balance row — see "The membership billing ledger" in Done). The balance math then needs no
-  changes at all: owed = stub + (everything charged since the 1st) - paid.
-- Moving the anchor to the 1st is the whole point — leaving it on the join date bills the student on
-  the 17th in perpetuity, which is precisely what proration is meant to avoid.
-- Because the amount is overridable it has to be *stored* rather than re-derived from dates, which is
-  exactly what a `MembershipCharge` row is for, so supporting the override costs nothing.
-- Offer proration only for monthly memberships. Weekly and biweekly periods are short enough that a
-  stub isn't worth the complexity, and the studio's answer only describes the monthly case.
-
-**Prerequisite, folded in here.** Default the assign-membership start date to the 1st.
-`EMPTY_ASSIGN_FORM` in `src/components/StudentMembershipDialog.tsx` currently evaluates `todayIso()`
-once at module load, so the default is both stale on a front-desk machine left running for days and
-wrong for any mid-month signup. Proration depends on this, so it isn't tracked separately.
-
-**Scope notes.** Both the proration stub and the extra-lesson charge are one-off `MembershipCharge`
-rows, so the per-period ledger this depends on already exists (see "The membership billing ledger" in
-Done) — nothing further to build there. The billing math in `electron/membershipLogic.ts` has good unit
-coverage already, so the proration calculation and the three-leg charge should get tests there.
-`src/components/HelpPanel.tsx` will need its Students and Settings sections updated to describe both
-flows.
-
 ## From the pre-beta code review (not yet addressed)
 The data-loss/startup blockers and the money-correctness findings from that review are fixed (see
 Done). These are the rest, kept in one place so they don't get lost. Roughly in the order worth
@@ -168,6 +86,53 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### Non-traditional membership fees — paid extra lessons and proration
+The last feature-shaped gap before the app was feature-complete for its first iteration. Two related
+additions, both riding on the `MembershipCharge` ledger (see below) — each is just a one-off row on it.
+
+**Paid extra lessons.** A new "Charge for an extra lesson" form in the Membership dialog, distinct from
+the existing free-form `+/- lessons` adjustment (still there, for a genuinely comped bonus lesson or a
+correction — no money involved). One atomic transaction, three legs: a one-off `MembershipCharge` (kind
+`extra_lesson`, so it reads as its own dated line rather than folding into a total), a `MembershipPayment`
+(so the money lands in the existing membership-dues revenue line — no third top-level revenue source
+needed, and CSV export/include-toggles stay as they are), and a positive `MembershipUsageAdjustment`
+delta for the allowance (already period-scoped, so it expires at period end same as any bonus lesson —
+"use it or lose it" needed no new work, since that was already how the app behaved). The charge leg is
+not optional: a payment with no matching charge would be read as prepayment toward dues and silently
+reduce what's owed next month, the same phantom-credit failure mode fixed for plan switches in
+"Membership billing no longer re-bills the past" below. Price is typed in per transaction (the studio has
+no fixed rate) and pre-fills from the last extra-lesson amount charged to that student — a new
+`lastExtraLessonPriceCents` field on `StudentMembership`, computed from the most recent `MembershipCharge`
+of that kind, so staff aren't retyping the same figure from memory.
+
+**Proration.** Signing up mid-month on a monthly plan now defaults to prorating the partial first month
+— checked on by default rather than opt-in, matching the studio's stated norm ("billed on the 1st should
+be the default"); staff can edit the suggested amount or uncheck it for an immediate, non-prorated start.
+The suggestion is `round(monthlyPrice x daysRemaining / daysInMonth)` (`suggestProratedChargeCents` in
+`src/lib/membershipFormat.ts`, counting the join day itself as one of the remaining days), and choosing to
+prorate moves the actual `startDate` sent to the server to the 1st of the next month
+(`startOfNextMonthIso` in `src/lib/isoDate.ts`) while the agreed stub is materialized as a one-off
+`MembershipCharge` (kind `proration`) in the same transaction as the membership itself. Offered only for
+monthly plans — weekly/biweekly periods are short enough that a stub isn't worth the complexity, and the
+studio's answer only described the monthly case. Folded in the backlog's noted prerequisite along the
+way: the assign form's start-date default was a module-level `todayIso()` evaluated once at import time,
+stale on a front-desk machine left running for days; it's now computed fresh every time the dialog opens.
+
+Both additions needed one thing the ledger didn't have yet: a way to tell a charge that needs explaining
+apart from an ordinary period charge. Added `MembershipCharge.kind` (`period` / `opening_balance` /
+`proration` / `extra_lesson` — a real discriminator, not string-matched off the display label, since
+`lastExtraLessonPriceCents` reads it back for logic) and `label` (the human-readable text — "Opening
+balance", "Prorated first month", "N extra lesson(s)" — left null for ordinary period charges, which
+don't need explaining beyond their own `periodStart`/`periodEnd`). Both migrations are purely additive.
+
+Coverage: `suggestProratedChargeCents`/`startOfNextMonthIso`/`isFirstOfMonthIso` are pure and unit
+tested (including a leap-year February and joining on the last day of the month). `chargeExtraLesson` and
+`assignMembership`'s proration path are covered in `memberships.test.ts` against a real migrated
+database — the charge-and-payment-cancel-out case (dues owed unchanged, allowance up by N), the
+`lastExtraLessonPriceCents` pre-fill tracking the two most recent charges in turn, the proration stub
+landing as its own row with no `periodStart`, and both being rejected below zero. HelpPanel's Students
+section documents both flows. 220 tests pass.
 
 ### The membership billing ledger
 `amountOwedCents` used to be pure arithmetic — `priorChargesCents` + (periods elapsed since `startDate`
