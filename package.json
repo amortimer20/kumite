@@ -1,5 +1,6 @@
 {
   "name": "karate-app",
+  "productName": "Kumite",
   "private": true,
   "version": "0.2.0",
   "description": "Studio management for Tracy's Kenpo Karate — students, scheduling, memberships, point of sale, and certificates.",

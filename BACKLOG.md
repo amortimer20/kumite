@@ -34,16 +34,19 @@ local files, renders no remote content, and has no external links, so there's no
 path — this is why it's here and not in the blockers. Still worth scheduling, and the upgrade will
 want a `better-sqlite3` rebuild and a check of the `sandbox`/preload behaviour described below.
 
-### User data lives in a folder named after the package, not the product
-`app.getName()` resolves to the package `name`, so the database lands in `%APPDATA%\karate-app`
-(`~/Library/Application Support/karate-app` on macOS) rather than `Kumite` — and that path is shown to
-users in Settings > About, so the mismatch is visible. Setting `productName` in `package.json` would
-fix the name, but it also changes where the database lives, so it needs a migrate-the-existing-file
-story rather than a bare rename. Best done before the studio has data worth moving, or not at all.
-(The `author`/`description` metadata and the 800x600 default window that used to be in this entry are
-both fixed.)
 
 ## Done
+
+### User data no longer lives in a folder named after the package
+`app.getName()` read the package `name` field (`karate-app`), so the database landed in
+`%APPDATA%\karate-app` (`~/Library/Application Support/karate-app` on macOS) instead of `Kumite` —
+visibly wrong in Settings > About. Fixed with a `"productName": "Kumite"` field in `package.json`,
+which Electron prefers over `name` when set. No migration story needed: confirmed with the studio
+owner that no beta has shipped and no live data exists yet, so there's no existing folder to move.
+Verified against a real packaged `.app` (not the dev build, which always uses `prisma/dev.db`
+regardless of this field) — `appInfo.get()` now reports
+`~/Library/Application Support/Kumite/karate-app.db`. Full gate (typecheck, lint, 220 tests) passes;
+no test coverage added since this is a single static config field, not application logic.
 
 ### The installer no longer ships bundled libraries a second time
 `electron-builder.json5`'s `files` list used to be just `["dist", "dist-electron"]` — which reads like
