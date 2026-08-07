@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DUE_SOON_WINDOW_MS,
+  GRACE_PERIOD_MS,
   addMonthsClamped,
   advancePeriod,
   computeMembershipStatus,
@@ -87,9 +88,9 @@ describe('currentPeriodBounds', () => {
 describe('computeMembershipStatus', () => {
   const now = new Date(2025, 5, 15, 12, 0, 0)
 
-  it('is overdue the instant the due date passes (zero grace period)', () => {
-    expect(computeMembershipStatus(now, now)).toBe('overdue')
-    expect(computeMembershipStatus(new Date(now.getTime() - 1), now)).toBe('overdue')
+  it('is due the instant the due date passes (start of the grace period)', () => {
+    expect(computeMembershipStatus(now, now)).toBe('due')
+    expect(computeMembershipStatus(new Date(now.getTime() - 1), now)).toBe('due')
   })
 
   it('is due_soon within the 3-day window', () => {
@@ -101,6 +102,16 @@ describe('computeMembershipStatus', () => {
   it('is ok once past the due_soon window', () => {
     const dueDate = new Date(now.getTime() + DUE_SOON_WINDOW_MS + 1)
     expect(computeMembershipStatus(dueDate, now)).toBe('ok')
+  })
+
+  it('stays due for the full 7-day grace period', () => {
+    const dueDate = new Date(now.getTime() - GRACE_PERIOD_MS)
+    expect(computeMembershipStatus(dueDate, now)).toBe('due')
+  })
+
+  it('is overdue once the grace period elapses', () => {
+    const dueDate = new Date(now.getTime() - GRACE_PERIOD_MS - 1)
+    expect(computeMembershipStatus(dueDate, now)).toBe('overdue')
   })
 })
 

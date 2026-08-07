@@ -140,6 +140,24 @@ an agent since nothing can click into it without a driver.
   duplicates every seeded student/instructor. Not a driver bug, just a project
   quirk worth knowing before you go looking for a student by name and find two.
 
+- **Setting a React-controlled `<input>`'s `.value` directly doesn't stick.**
+  `inp.value = 'x'; inp.dispatchEvent(new Event('input', {bubbles:true}))`
+  updates the DOM but React's tracked value doesn't see the change (it patches
+  the native setter to diff against), so the component re-renders back to its
+  old state on the next update. Go through the native setter instead:
+  `Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(inp, 'x')`
+  *then* dispatch `input`. Confirm with a follow-up `eval` reading `.value`
+  back before trusting it — don't assume the first eval's return value proves
+  React saw it.
+
+- **A synthetic `.click()` on a Radix `DropdownMenuTrigger` may not open the
+  menu** (Radix listens for pointer events with a fuller sequence than a bare
+  `click`). Confirmed unreliable in testing — if a `[role=menuitem]` list
+  comes back empty right after clicking a `...`-style trigger, don't assume
+  the menu doesn't exist. Prefer a plain-button path to the same action if one
+  exists (e.g. the Details dialog's own "Edit" button reaches the same edit
+  form as the row's dropdown "Edit" item) rather than fighting the trigger.
+
 ## Troubleshooting
 
 - **`ERR_MODULE_NOT_FOUND` for 'playwright'`:** the driver (or any throwaway

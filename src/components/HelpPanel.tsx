@@ -80,8 +80,11 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   icon showing whether each is a private, group, or intro lesson.
                 </p>
                 <p>
-                  <strong>Membership Health</strong> lists memberships that are overdue or due soon.
-                  Click <strong>Record Payment</strong> on any row to log a payment without leaving the
+                  <strong>Membership Health</strong> lists memberships that are due soon, due, or
+                  overdue. A membership doesn't show as overdue the instant its due date passes — there's
+                  a 7-day grace period first (shown as <strong>Due</strong>), since students here usually
+                  pay in person at their next lesson rather than on the due date itself. Click{' '}
+                  <strong>Record Payment</strong> on any row to log a payment without leaving the
                   Dashboard.
                 </p>
               </div>
@@ -264,8 +267,8 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   still exists and is reachable.
                 </p>
                 <p>
-                  <strong>About</strong> shows the installed app version and the database file's location
-                  on disk.
+                  <strong>About</strong> shows the installed app version, the developer, and the database
+                  file's location on disk.
                 </p>
               </div>
             )}

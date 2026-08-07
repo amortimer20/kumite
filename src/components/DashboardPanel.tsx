@@ -145,6 +145,9 @@ export function DashboardPanel() {
   const overdue = memberships
     .filter((m) => m.status === 'overdue')
     .sort((a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime())
+  const due = memberships
+    .filter((m) => m.status === 'due')
+    .sort((a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime())
   const dueSoon = memberships
     .filter((m) => m.status === 'due_soon')
     .sort((a, b) => new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime())
@@ -222,7 +225,7 @@ export function DashboardPanel() {
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-full" />
                 </div>
-              ) : overdue.length === 0 && dueSoon.length === 0 ? (
+              ) : overdue.length === 0 && due.length === 0 && dueSoon.length === 0 ? (
                 <p className="text-sm italic text-muted-foreground">All memberships are up to date.</p>
               ) : (
                 <div className="space-y-4">
@@ -231,6 +234,16 @@ export function DashboardPanel() {
                       <p className="mb-1 text-sm font-medium text-destructive">Overdue ({overdue.length})</p>
                       <div className="divide-y divide-border">
                         {overdue.map((m) => (
+                          <MembershipRow key={m.id} membership={m} onRecordPayment={() => setPaymentStudent(m.student)} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {due.length > 0 && (
+                    <div>
+                      <p className="mb-1 text-sm font-medium text-orange-500">Due ({due.length})</p>
+                      <div className="divide-y divide-border">
+                        {due.map((m) => (
                           <MembershipRow key={m.id} membership={m} onRecordPayment={() => setPaymentStudent(m.student)} />
                         ))}
                       </div>

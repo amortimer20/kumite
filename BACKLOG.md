@@ -27,6 +27,40 @@ Every item from that review is now fixed — see Done. The checklist is closed.
 
 ## Done
 
+### Six pre-beta polish items
+1. **Membership status had zero grace period** — `overdue` fired the instant the due date passed,
+   which is wrong for a studio where students pay in person at their next lesson rather than on the
+   due date itself (e.g. the 1st falling on a Sunday with the first lesson back on Saturday). Added a
+   new `due` status: 7-day grace window between `due_soon` and `overdue` (`GRACE_PERIOD_MS` in
+   `membershipLogic.ts`). Status is computed on the fly, not stored, so no migration. Dashboard's
+   Membership Health now shows three buckets (Overdue/red, Due/orange, Due soon/amber) instead of two.
+2. **DevTools was reachable in the packaged build** — no `devTools: false` anywhere, so F12/Ctrl+Shift+I
+   and the menu's "Toggle Developer Tools" both worked in production. Now gated on
+   `Boolean(VITE_DEV_SERVER_URL)` — off whenever not running via `npm run dev`. Verified by attempting
+   `webContents.openDevTools()` directly in the packaged-style build and confirming
+   `isDevToolsOpened()` stays `false`.
+3. **Add Student modal could run off-screen on a shorter laptop display** — the `Dialog` primitive had
+   no `max-height`/`overflow-y` at all, ever; every dialog could in principle overflow top/bottom with
+   no way to scroll to its own submit button. Fixed at the primitive (`max-h-[90vh] overflow-y-auto` in
+   `dialog.tsx`), not per-instance, since the same gap existed in every dialog in the app.
+4. Added a static "Developer: Anthony Mortimer" line to Settings > About.
+5. **Edit Student's Cancel/Save row sat above Family Members** — moved below it. The form and its
+   footer are no longer the same JSX block (footer is now outside the `<form>`, after the Family
+   Members section), so Save uses `form="edit-student-form"` to stay wired to the right `onSubmit`.
+   Verified the wiring survives being physically outside the form element: set a field via eval,
+   clicked the relocated Save, confirmed the row updated in the table.
+6. Swept `HelpPanel.tsx` for staleness against recent changes: updated the Dashboard section's
+   Membership Health description for the new three-status grace period, and the About section
+   description to mention the developer field.
+
+Full gate (typecheck, lint, 222 tests — 4 new/updated for the grace-period boundary) passes. Verified
+live via the `run-kumite` skill: launched a packaged-style build, confirmed the DevTools no-op, saw all
+three Membership Health buckets render with real seeded data landing in each one, confirmed the
+relocated Edit Student footer visually and by a real submit round-trip. Two non-obvious driver gotchas
+found along the way are now documented in `run-kumite`'s `SKILL.md`: a plain `.value =` assignment on a
+React-controlled input doesn't stick (needs the native property setter), and a synthetic `.click()` on
+a Radix `DropdownMenuTrigger` isn't reliable (used the Details dialog's own Edit button instead).
+
 ### Electron upgraded from 30 (EOL) to 43 (current)
 `electron@30.5.1` was 13 majors behind and long past end-of-life, carrying unpatched Chromium and
 Node CVEs. Bumped to `electron@43.3.0`, and `electron-builder@24.13.3 → 26.15.3` alongside (builder 24

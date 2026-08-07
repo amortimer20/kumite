@@ -542,7 +542,7 @@ describe('recordMembershipPayment', () => {
       paidOn: new Date().toISOString(),
     })
     expect(afterFirstHalf.amountOwedCents).toBe(4000)
-    expect(afterFirstHalf.status).toBe('overdue')
+    expect(afterFirstHalf.status).toBe('due')
 
     const afterSecondHalf = await recordMembershipPayment(membership.id, {
       amountCents: 4000,
@@ -568,7 +568,7 @@ describe('deleteMembershipPayment', () => {
     const afterDelete = await deleteMembershipPayment(withPayment.payments[0].id)
     expect(afterDelete.payments.length).toBe(0)
     expect(afterDelete.amountOwedCents).toBe(8000)
-    expect(afterDelete.status).toBe('overdue')
+    expect(afterDelete.status).toBe('due')
   })
 })
 

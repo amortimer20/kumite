@@ -37,6 +37,11 @@ function createWindow() {
     minHeight: 640,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
+      // Off in the packaged app — the default F12/Ctrl+Shift+I shortcut and
+      // the menu's "Toggle Developer Tools" item both respect this, so
+      // setting it false removes both. Left on for `npm run dev`, where it's
+      // the only way to see renderer console output while developing.
+      devTools: Boolean(VITE_DEV_SERVER_URL),
     },
   })
 

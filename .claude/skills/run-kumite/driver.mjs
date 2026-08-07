@@ -98,6 +98,22 @@ const COMMANDS = {
     }
   },
 
+  // Runs in the MAIN process (via Playwright's app.evaluate), not the
+  // renderer — for anything `eval` can't see: webPreferences flags,
+  // BrowserWindow/webContents state, app.getPath(), etc. Playwright calls
+  // the function with the `electron` module namespace as its only arg, so
+  // reach BrowserWindow/app through that — e.g.
+  // `app-eval electron.BrowserWindow.getAllWindows()[0].webContents.isDevToolsOpened()`.
+  async 'app-eval'(expr) {
+    if (!app) return console.log('ERROR: launch first')
+    try {
+      const fn = new Function('electron', `return (${expr})`)
+      console.log(JSON.stringify(await app.evaluate(fn)))
+    } catch (e) {
+      console.log('ERROR:', e.message)
+    }
+  },
+
   async text(sel) {
     if (!page) return console.log('ERROR: launch first')
     console.log(await page.evaluate((s) => (s ? document.querySelector(s) : document.body)?.innerText ?? '(null)', sel || null))
