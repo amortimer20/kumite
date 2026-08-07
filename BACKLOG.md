@@ -12,20 +12,16 @@ Black-belt certificate at all — juniors aren't graded to black belt — so the
 `regular` entry. Blocked purely on the studio owner sourcing the real template files — the swap-in
 mechanism is already built and needs no further design work.
 
-## Verify the Windows installer end-to-end
-No in-app/over-the-air auto-updates — updates will just be a newer installer the studio re-runs
-each release. The NSIS config in `electron-builder.json5` is already set up for this
-(`perMachine: false` installs per-user to AppData with no admin prompt, `oneClick: false` shows an
-install wizard with a progress screen, and Start Menu/Desktop shortcuts are on by default) — running
-a newer installer over an existing install replaces it in place with no extra code needed. Still
-untested: do a real Windows build/install/upgrade pass to confirm it works as expected, and decide
-whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
-Publisher" SmartScreen warning — not a blocker, just rougher first impression).
-
 ## From the pre-beta code review
 Every item from that review is now fixed — see Done. The checklist is closed.
 
 ## Done
+
+### Windows installer verified end-to-end
+Real hardware, not just config review: installed 0.1.0, then built and installed 0.2.0 over it —
+NSIS's `perMachine: false`/`oneClick: false` upgrade-in-place worked as expected, no admin prompt,
+existing data untouched. Code-signing deliberately deferred (unsigned still shows a Windows "Unknown
+Publisher" SmartScreen warning) — not a blocker for beta, revisit for a 1.0 release.
 
 ### Six pre-beta polish items
 1. **Membership status had zero grace period** — `overdue` fired the instant the due date passed,
