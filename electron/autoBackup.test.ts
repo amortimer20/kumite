@@ -159,4 +159,35 @@ describe('reconfigureAutoBackup', () => {
     vi.advanceTimersByTime(DAY_MS)
     expect(backupSpy).toHaveBeenCalledTimes(4)
   })
+
+  it('records the failure message and leaves lastAutoBackupAt untouched when a backup fails', async () => {
+    backupSpy.mockRejectedValueOnce(new Error('ENOENT: no such file or directory'))
+    reconfigureAutoBackup(config())
+    // The immediate run is fire-and-forget (void) — advancing fake timers by
+    // 0ms still flushes the pending promise chain, unlike a plain await.
+    await vi.advanceTimersByTimeAsync(0)
+
+    // Only the failure is recorded — never a success timestamp for a run that
+    // didn't happen, and no attempt to clear a previous error at the same time.
+    expect(updateSpy).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { lastAutoBackupError: 'ENOENT: no such file or directory' },
+    })
+    expect(updateSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ lastAutoBackupAt: expect.anything() }) }),
+    )
+  })
+
+  it('clears a previously-recorded error once a backup succeeds again', async () => {
+    backupSpy.mockResolvedValue(undefined)
+    reconfigureAutoBackup(config())
+    await vi.advanceTimersByTimeAsync(0)
+
+    // A success writes both fields together, so Settings can't show a stale
+    // error next to a fresh success date.
+    expect(updateSpy).toHaveBeenCalledWith({
+      where: { id: 1 },
+      data: { lastAutoBackupAt: expect.any(Date), lastAutoBackupError: null },
+    })
+  })
 })

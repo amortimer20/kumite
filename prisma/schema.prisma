@@ -135,6 +135,12 @@ model AppSettings {
   // surfaced in Settings so the user has proof it's running, not just the
   // checkbox's word for it.
   lastAutoBackupAt      DateTime?
+  // Message from the most recent automatic backup *attempt* that failed.
+  // Cleared on the next success. Without this, a folder that stops resolving
+  // (renamed, deleted, an unmounted network/sync path) fails silently to
+  // console.error forever — Settings keeps showing the old success date and
+  // the user's mental model stays "backups are on" long after they've stopped.
+  lastAutoBackupError   String?
 }
 
 // SQLite has no native enum support in Prisma, so status is a plain string.

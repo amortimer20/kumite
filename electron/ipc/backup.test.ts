@@ -6,13 +6,15 @@ import Database from 'better-sqlite3'
 
 // The real db.ts applies migrations to the dev database at import time, which a
 // unit test must not touch. backup.ts only needs getDbPath, and these tests
-// never exercise the paths that use it.
+// never exercise the paths that use it except via the mutable ref below, which
+// backupDatabaseTo tests point at a real throwaway source file.
+const { dbPathRef } = vi.hoisted(() => ({ dbPathRef: { current: '/nonexistent/karate-app.db' } }))
 vi.mock('../db.ts', () => ({
-  getDbPath: () => '/nonexistent/karate-app.db',
+  getDbPath: () => dbPathRef.current,
   prisma: {},
 }))
 
-const { assertRestorableBackup } = await import('./backup.ts')
+const { assertRestorableBackup, backupDatabaseTo } = await import('./backup.ts')
 
 let tmpDir: string
 
@@ -92,5 +94,60 @@ describe('assertRestorableBackup', () => {
     `)
     db.close()
     expect(() => assertRestorableBackup(p)).toThrow(/not a Kumite backup/i)
+  })
+})
+
+describe('backupDatabaseTo', () => {
+  afterEach(() => {
+    dbPathRef.current = '/nonexistent/karate-app.db'
+  })
+
+  it('produces a restorable backup at the requested path', async () => {
+    const src = file('source.db')
+    makeKumiteLikeDb(src)
+    dbPathRef.current = src
+    const dest = file('backup.db')
+
+    await backupDatabaseTo(dest)
+
+    expect(fs.existsSync(dest)).toBe(true)
+    expect(() => assertRestorableBackup(dest)).not.toThrow()
+  })
+
+  it('does not leave a .partial temp file behind after a successful backup', async () => {
+    const src = file('source2.db')
+    makeKumiteLikeDb(src)
+    dbPathRef.current = src
+    const dest = file('backup2.db')
+
+    await backupDatabaseTo(dest)
+
+    expect(fs.existsSync(`${dest}.partial`)).toBe(false)
+  })
+
+  // The core of the fix: a write interrupted partway (a pulled USB stick, a
+  // lost network-drive connection, the app quitting mid-copy) must never leave
+  // a file at the final path that looks like a valid backup but isn't.
+  it('discards a corrupted partial write and throws, leaving nothing at the destination', async () => {
+    const src = file('source3.db')
+    makeKumiteLikeDb(src)
+    dbPathRef.current = src
+    const dest = file('backup3.db')
+
+    // Simulate an interrupted/corrupted copy: better-sqlite3's own backup()
+    // is stubbed to write garbage instead of a real snapshot.
+    const backupSpy = vi
+      .spyOn(Database.prototype, 'backup')
+      .mockImplementation((async (destPath: string) => {
+        fs.writeFileSync(destPath, 'not a valid sqlite file')
+      }) as unknown as typeof Database.prototype.backup)
+
+    try {
+      await expect(backupDatabaseTo(dest)).rejects.toThrow(/integrity check/i)
+    } finally {
+      backupSpy.mockRestore()
+    }
+    expect(fs.existsSync(dest)).toBe(false)
+    expect(fs.existsSync(`${dest}.partial`)).toBe(false)
   })
 })

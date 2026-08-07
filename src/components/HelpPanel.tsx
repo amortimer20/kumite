@@ -243,6 +243,13 @@ export function HelpPanel({ open, onOpenChange }: { open: boolean; onOpenChange:
                   deleted automatically, whichever setting you pick.
                 </p>
                 <p>
+                  If an automatic backup fails — the chosen folder was renamed, deleted, or is on a
+                  network or synced drive that's temporarily unreachable — this section shows an error
+                  message instead of just quietly falling behind. It keeps trying on schedule and clears
+                  the message the next time one succeeds; if it keeps failing, check that the folder
+                  still exists and is reachable.
+                </p>
+                <p>
                   <strong>About</strong> shows the installed app version and the database file's location
                   on disk.
                 </p>

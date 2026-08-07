@@ -213,6 +213,9 @@ export interface AppSettings {
   autoBackupKeepCount: number | null
   // Null if an automatic backup has never completed successfully.
   lastAutoBackupAt: string | null
+  // Message from the most recent automatic backup attempt that failed;
+  // cleared on the next success. Null means the last attempt (if any) succeeded.
+  lastAutoBackupError: string | null
 }
 
 export interface AppSettingsInput {

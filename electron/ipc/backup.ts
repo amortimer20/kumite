@@ -12,13 +12,46 @@ function defaultBackupName() {
 // even while the live connection has pending WAL data, so a plain file copy
 // isn't needed (and would risk grabbing a torn read). Shared by the manual
 // "Export Backup" button and the automatic scheduler in autoBackup.ts.
+//
+// Writes to a `.partial` sibling and only renames it into place once it's
+// verified — a write interrupted by a pulled USB stick, a lost network-drive
+// connection, or the app quitting mid-copy would otherwise leave a
+// correctly-named file at filePath that looks like a valid backup but isn't.
+// The `.partial` suffix also keeps an interrupted attempt from ever being
+// mistaken for a real one: it matches neither the auto-backup nor the manual
+// export naming pattern, so it's never offered by the restore file picker and
+// never counted by backupsToPrune's retention logic.
 export async function backupDatabaseTo(filePath: string) {
+  const partialPath = `${filePath}.partial`
   const src = new Database(getDbPath(), { readonly: true, fileMustExist: true })
   try {
-    await src.backup(filePath)
+    await src.backup(partialPath)
   } finally {
     src.close()
   }
+
+  // A garbage/truncated write can fail before PRAGMA integrity_check even
+  // runs — opening it at all throws ("file is not a database") rather than
+  // returning a non-'ok' result — so any failure here, not just a bad pragma
+  // result, means the write is unusable.
+  let passedIntegrityCheck = false
+  try {
+    const verify = new Database(partialPath, { readonly: true, fileMustExist: true })
+    try {
+      const integrity = verify.pragma('integrity_check') as { integrity_check: string }[]
+      passedIntegrityCheck = integrity[0]?.integrity_check === 'ok'
+    } finally {
+      verify.close()
+    }
+  } catch {
+    passedIntegrityCheck = false
+  }
+
+  if (!passedIntegrityCheck) {
+    fs.rmSync(partialPath, { force: true })
+    throw new Error('The backup did not pass its integrity check and was discarded.')
+  }
+  fs.renameSync(partialPath, filePath)
 }
 
 // Tables every real Kumite database has. Checked by name so that restoring

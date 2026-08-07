@@ -22,6 +22,7 @@ export function toAppSettings(row: {
   autoBackupFrequency: string
   autoBackupKeepCount: number | null
   lastAutoBackupAt: Date | null
+  lastAutoBackupError: string | null
 }) {
   return {
     ...row,
@@ -69,12 +70,22 @@ async function pruneOldBackups(directory: string, keepCount: number | null) {
 async function runAutoBackupNow(directory: string, keepCount: number | null) {
   try {
     await backupDatabaseTo(path.join(directory, timestampedBackupName()))
-    await prisma.appSettings.update({ where: { id: 1 }, data: { lastAutoBackupAt: new Date() } })
+    await prisma.appSettings.update({
+      where: { id: 1 },
+      data: { lastAutoBackupAt: new Date(), lastAutoBackupError: null },
+    })
   } catch (err) {
     // No caller to propagate to — this runs off a timer, not a user action.
     // A bad/removed directory shouldn't crash the app; it just skips a beat
     // and tries again next interval.
     console.error('Automatic backup failed:', err)
+    // Recorded so Settings can say so, rather than just going quiet while
+    // continuing to show the last time it *did* work — a renamed, deleted, or
+    // disconnected folder would otherwise fail forever with the only sign
+    // being a date that slowly falls further behind.
+    await prisma.appSettings
+      .update({ where: { id: 1 }, data: { lastAutoBackupError: err instanceof Error ? err.message : String(err) } })
+      .catch((updateErr) => console.error('Could not record the automatic backup failure:', updateErr))
     return
   }
 

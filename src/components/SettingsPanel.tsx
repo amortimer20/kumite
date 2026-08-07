@@ -595,6 +595,13 @@ export function SettingsPanel() {
                                 ? `Last automatic backup: ${new Date(settings.lastAutoBackupAt).toLocaleString()}`
                                 : 'No automatic backups yet — one will run shortly.'}
                           </p>
+                          {settings.autoBackupDirectory && settings.lastAutoBackupError && (
+                            <p className="text-sm text-destructive">
+                              The most recent automatic backup attempt failed: {settings.lastAutoBackupError}.
+                              It will try again at the next scheduled time — if this keeps happening, check
+                              that the folder above still exists and is reachable.
+                            </p>
+                          )}
                         </>
                       )}
                     </div>

@@ -133,19 +133,6 @@ three parallel calls reject the dashboard confidently renders "0 Active students
 month" and "All memberships are up to date." A generic "couldn't load" state would be a big improvement.
 (The error boundary half of this entry is done — see Done.)
 
-### Automatic backups fail invisibly, and a partial write looks like a valid backup
-Two gaps beyond the retention item above, both in `electron/autoBackup.ts`. First, every failure is
-swallowed to `console.error` and `lastAutoBackupAt` is only written on success, so if the target folder
-is renamed, deleted, or is a network/OneDrive path that stops resolving, backups silently stop forever
-while Settings keeps showing a stale date — the user's mental model stays "backups are on". This
-compounds everything else here, since backups are the only recovery path. Second, `backupDatabaseTo`
-writes straight to the final timestamped filename, so a write interrupted by a pulled USB stick or a
-quit leaves a correctly-named file that is not a usable backup. Writing to `<name>.partial` and
-renaming on success, plus a `PRAGMA integrity_check` on the result, would make a bad backup impossible
-to mistake for a good one. (Restore now validates the file it's given, so a bad backup is at least
-caught at restore time rather than bricking the app — but it's still a backup the studio thought they
-had and don't.)
-
 ### The installer still ships bundled libraries a second time
 Partly addressed: moving the build-only packages to `devDependencies` and cleaning `dist-electron`
 between builds took `app.asar` from 243 MB to 81 MB and the DMG from 160 MB to 128 MB. What remains is
@@ -190,6 +177,30 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### Automatic backups no longer fail invisibly, and a partial write can't pass as a valid backup
+Two gaps in `electron/autoBackup.ts` and `electron/ipc/backup.ts`, both compounding the fact that
+backups are the only recovery path this app has. First, `backupDatabaseTo` (shared by the manual
+"Export Backup" button and the automatic scheduler) used to write straight to the final timestamped
+filename, so a write interrupted by a pulled USB stick, a lost network-drive connection, or the app
+quitting mid-copy left a correctly-named file that looked like a backup but wasn't. It now writes to a
+`<name>.partial` sibling, runs a `PRAGMA integrity_check` against it, and only renames it into place on
+success — an interrupted write is discarded and the caller gets a clear error instead of a silently
+useless file. The `.partial` suffix also means an interrupted attempt is never picked up by the restore
+file picker or counted by `backupsToPrune`'s retention logic, since it matches neither naming pattern.
+
+Second, every automatic-backup failure was swallowed to `console.error` with `lastAutoBackupAt` only
+written on success, so a folder that stopped resolving failed forever while Settings kept showing an
+increasingly stale "last backup" date — the user's mental model stayed "backups are on" long after they
+weren't. A new `AppSettings.lastAutoBackupError` column now records the failure message and is cleared
+on the next success; Settings shows it as a red message right under the schedule (only while automatic
+backups are still configured), naming what's wrong and suggesting a check of the folder. Restoring
+already validates the file it's given, so a bad backup couldn't have bricked the app before this — but
+it could have been a backup the studio thought they had and didn't, which is the failure mode this
+closes. Coverage: `backupDatabaseTo` gets a real-database integrity-check round trip plus a test that
+injects a corrupted write (via a `better-sqlite3` backup-method stub) and asserts nothing is left at
+either the destination or the `.partial` path; `autoBackup.test.ts` covers the error being recorded on
+failure without a false success timestamp, and cleared the next time a backup succeeds. 195 tests pass.
 
 ### Global unhandled-rejection safety net for failed api.* calls
 Most `onSubmit` handlers wrap their `api.*` call in `catch (err) { toast.error(getErrorMessage(err)) }`,
