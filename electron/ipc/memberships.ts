@@ -2,17 +2,89 @@ import { ipcMain } from 'electron'
 import { Prisma } from '../../generated/prisma/client.ts'
 import { prisma } from '../db.ts'
 import {
-  chargesForTerm,
-  computeMembershipBalance,
   computeMembershipStatus,
+  computeOwedFromCharges,
   computeUsage,
   currentPeriodBounds,
+  elapsedPeriods,
 } from '../membershipLogic.ts'
 import type {
   MembershipPaymentInput,
   MembershipPlanInput,
   MembershipUsageAdjustmentInput,
 } from '../../shared/types.ts'
+
+type PrismaClientOrTx = typeof prisma | Prisma.TransactionClient
+
+// The fields ensureChargesMaterialized/materializeCharges need to know what's
+// already been charged (priorChargesCents, read once — see the schema
+// comment) and what a not-yet-materialized period should charge next.
+type ChargeableMembership = {
+  id: string
+  startDate: Date
+  priorChargesCents: number
+  billedPriceCents: number
+  priceOverrideCents: number | null
+  billingFrequency: string
+}
+
+// Figures out which periods (if any) still need a MembershipCharge row for
+// this membership, without writing anything — split from materializeCharges
+// so callers that are already inside a transaction (closing out an old term
+// on a plan/cadence change) can compose it without nesting transactions.
+async function chargesToMaterialize(client: PrismaClientOrTx, membership: ChargeableMembership, asOf: Date) {
+  const existing = await client.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+  const toCreate: Prisma.MembershipChargeCreateManyInput[] = []
+
+  // One-time seed: fold in whatever priorChargesCents had already accumulated
+  // before this feature existed. Only ever happens on a membership's very
+  // first materialization — from then on `existing` is never empty again, so
+  // this branch can't fire twice even if it's a newly-cancelled-and-reassigned
+  // membership with its own fresh priorChargesCents of 0.
+  if (existing.length === 0 && membership.priorChargesCents > 0) {
+    toCreate.push({
+      studentMembershipId: membership.id,
+      periodStart: null,
+      periodEnd: null,
+      priceCents: membership.priorChargesCents,
+    })
+  }
+
+  const effectivePriceCents = membership.priceOverrideCents ?? membership.billedPriceCents
+  const alreadyCharged = new Set(
+    existing.filter((c) => c.periodStart).map((c) => c.periodStart!.getTime()),
+  )
+  for (const { periodStart, periodEnd } of elapsedPeriods(membership.startDate, membership.billingFrequency, asOf)) {
+    if (alreadyCharged.has(periodStart.getTime())) continue
+    toCreate.push({ studentMembershipId: membership.id, periodStart, periodEnd, priceCents: effectivePriceCents })
+  }
+  return toCreate
+}
+
+// Writes whatever chargesToMaterialize finds missing. Composable inside an
+// existing transaction (e.g. closing out a term before resetting startDate) —
+// callers reading fresh balance need the standalone, self-transacting
+// ensureChargesMaterialized below instead.
+async function materializeCharges(client: PrismaClientOrTx, membership: ChargeableMembership, asOf: Date) {
+  const toCreate = await chargesToMaterialize(client, membership, asOf)
+  if (toCreate.length > 0) {
+    await client.membershipCharge.createMany({ data: toCreate })
+  }
+}
+
+// Ensures every billing period from this membership's startDate through `now`
+// has a MembershipCharge row, then returns all of them (existing + newly
+// created) so the caller doesn't need a second query. Idempotent and safe to
+// call on every read — mirrors how the balance used to be recomputed fresh on
+// every read, just materialized into rows instead of an in-memory formula.
+// Transactional so two reads racing the same membership can't create the same
+// period twice (the @@unique constraint is the backstop if they somehow did).
+async function ensureChargesMaterialized(membership: ChargeableMembership, asOf: Date) {
+  return prisma.$transaction(async (tx) => {
+    await materializeCharges(tx, membership, asOf)
+    return tx.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+  })
+}
 
 const membershipPlanInclude = {
   _count: { select: { studentMemberships: { where: { active: true } } } },
@@ -37,13 +109,8 @@ function serializeMembershipPlan<T extends { _count: { studentMemberships: numbe
   return { ...rest, studentCount: _count.studentMemberships }
 }
 
-type MembershipForSerialize = {
+type MembershipForSerialize = ChargeableMembership & {
   studentId: string
-  startDate: Date
-  priceOverrideCents: number | null
-  billedPriceCents: number
-  billingFrequency: string
-  priorChargesCents: number
   plan: { priceCents: number; billingFrequency: string; includedPrivateLessons: number; _count: { studentMemberships: number } }
   payments: { amountCents: number }[]
   usageAdjustments: { delta: number; createdAt: Date }[]
@@ -58,13 +125,13 @@ async function serializeStudentMembership<T extends MembershipForSerialize>(memb
 
   const effectivePriceCents = membership.priceOverrideCents ?? membership.billedPriceCents
   const totalPaidCents = membership.payments.reduce((sum, p) => sum + p.amountCents, 0)
-  const { owedCents, nextDueDate } = computeMembershipBalance(
-    membership.startDate,
-    membership.billingFrequency,
-    now,
-    effectivePriceCents,
+  const charges = await ensureChargesMaterialized(membership, now)
+  const { owedCents, nextDueDate } = computeOwedFromCharges(
+    charges,
     totalPaidCents,
-    membership.priorChargesCents,
+    effectivePriceCents,
+    membership.billingFrequency,
+    membership.startDate,
   )
 
   const status = computeMembershipStatus(nextDueDate, now)
@@ -145,10 +212,11 @@ export async function updateMembershipPlan(id: string, input: Partial<Membership
 // "raise the price for everyone on this plan," offered as a prompt after a
 // plan's billing terms change.
 //
-// Per membership: bank everything charged through the current period at the
-// student's OLD price into priorChargesCents, then re-anchor startDate to that
-// period's end and snapshot the plan's new price/cadence. So past and current
-// periods keep the old price, and the new price takes effect at the next due
+// Per membership: materialize a real MembershipCharge row for every period
+// through the current one at the student's OLD price, then re-anchor
+// startDate to that period's end and snapshot the plan's new price/cadence.
+// So past and current periods keep the old price (each with its own row,
+// rather than a lump sum), and the new price takes effect at the next due
 // date without shifting the billing day. This is the same close-out-the-term
 // mechanism a cadence-changing plan switch uses (see updateMembership); the
 // difference is the anchor is the current period's end, not `now`, precisely so
@@ -178,11 +246,13 @@ export async function applyPlanTermsToActiveMemberships(planId: string) {
         continue
       }
       const { periodEnd } = currentPeriodBounds(m.startDate, m.billingFrequency, now)
+      // Close out the old term with real per-period rows at the OLD price
+      // before moving the anchor — once startDate moves, nothing would ever
+      // materialize these periods again.
+      await materializeCharges(tx, m, now)
       await tx.studentMembership.update({
         where: { id: m.id },
         data: {
-          priorChargesCents:
-            m.priorChargesCents + chargesForTerm(m.startDate, m.billingFrequency, now, m.billedPriceCents),
           startDate: periodEnd,
           billedPriceCents: plan.priceCents,
           billingFrequency: plan.billingFrequency,
@@ -278,43 +348,36 @@ export async function assignMembership(
 }
 
 export async function updateMembership(id: string, input: { planId?: string; priceOverrideCents?: number | null }) {
-  const data: Prisma.StudentMembershipUpdateInput = { ...input }
-  if (input.planId) {
-    const current = await prisma.studentMembership.findUniqueOrThrow({ where: { id }, include: { payments: true } })
-    if (input.planId !== current.planId) {
-      const newPlan = await prisma.membershipPlan.findUniqueOrThrow({ where: { id: input.planId } })
-      // Moving to a different plan re-snapshots its terms onto the membership,
-      // so from here on this student bills at the new plan's price and cadence.
-      data.billedPriceCents = newPlan.priceCents
-      data.billingFrequency = newPlan.billingFrequency
+  const membership = await prisma.$transaction(async (tx) => {
+    const data: Prisma.StudentMembershipUpdateInput = { ...input }
+    if (input.planId) {
+      const current = await tx.studentMembership.findUniqueOrThrow({ where: { id }, include: { payments: true } })
+      if (input.planId !== current.planId) {
+        const newPlan = await tx.membershipPlan.findUniqueOrThrow({ where: { id: input.planId } })
+        // Moving to a different plan re-snapshots its terms onto the membership,
+        // so from here on this student bills at the new plan's price and cadence.
+        data.billedPriceCents = newPlan.priceCents
+        data.billingFrequency = newPlan.billingFrequency
 
-      // A different billing cadence starting mid-cycle would otherwise keep
-      // walking periods forward from the old plan's stale anchor date — restart
-      // the clock from today instead so the new cadence counts from the point
-      // the switch actually happened.
-      if (newPlan.billingFrequency !== current.billingFrequency) {
-        const now = new Date()
-        // Resetting the anchor closes out the old term, so bank what it
-        // charged. Without this, every period before the switch stops being
-        // owed and the payments made against them are re-read as credit
-        // against the new plan's price — a student who had paid $700 on a
-        // $100/month plan and moved to $50/week came out ~14 weeks prepaid.
-        data.priorChargesCents =
-          current.priorChargesCents +
-          chargesForTerm(
-            current.startDate,
-            current.billingFrequency,
-            now,
-            current.priceOverrideCents ?? current.billedPriceCents,
-          )
-        data.startDate = now
+        // A different billing cadence starting mid-cycle would otherwise keep
+        // walking periods forward from the old plan's stale anchor date — restart
+        // the clock from today instead so the new cadence counts from the point
+        // the switch actually happened.
+        if (newPlan.billingFrequency !== current.billingFrequency) {
+          const now = new Date()
+          // Close out the old term with real per-period rows at the OLD price
+          // and cadence before moving the anchor — once startDate moves,
+          // nothing would ever materialize these periods again. Without this,
+          // every period before the switch stops being owed and the payments
+          // made against them are re-read as credit against the new plan's
+          // price — a student who had paid $700 on a $100/month plan and moved
+          // to $50/week came out ~14 weeks prepaid.
+          await materializeCharges(tx, current, now)
+          data.startDate = now
+        }
       }
     }
-  }
-  const membership = await prisma.studentMembership.update({
-    where: { id },
-    data,
-    include: studentMembershipInclude,
+    return tx.studentMembership.update({ where: { id }, data, include: studentMembershipInclude })
   })
   return serializeStudentMembership(membership)
 }

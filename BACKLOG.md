@@ -22,18 +22,6 @@ untested: do a real Windows build/install/upgrade pass to confirm it works as ex
 whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
-## Membership billing has no per-period charge ledger
-`amountOwedCents` is derived (`priorChargesCents` + periods elapsed x snapshotted price - total paid)
-rather than read from a list of what was actually charged when. That's why the snapshot and
-`priorChargesCents` fields exist at all: without them, anything that changed a price or an anchor
-retroactively rewrote history. It works and is now correct for the cases the app supports, but a real
-ledger (one row per period charged, with its own price) would make partial-period proration,
-mid-period plan changes, and "show me exactly why this student owes this" straightforwardly
-expressible instead of needing another carry-forward field each time. Not a blocker for the
-non-traditional-fees work below, as first thought — that design's proration and paid-extra-lesson
-charges both fit `priorChargesCents` as it stands. This stays a "worth doing eventually" item, and the
-case for it is readability of the balance rather than any capability the app currently lacks.
-
 ## Non-traditional membership fees — paid extra lessons and proration
 The last feature-shaped gap before the app is feature-complete for its first iteration. The business
 rules are now settled (answers from the studio owner below), so this is a design ready to build rather
@@ -66,7 +54,7 @@ that already exist:
 
 | Leg | Mechanism | Why it's needed |
 | --- | --- | --- |
-| Charge | add to `priorChargesCents` | keeps owed = (ever charged - ever paid) correct |
+| Charge | a one-off `MembershipCharge` row | keeps owed = (ever charged - ever paid) correct, and shows up as its own dated line rather than folded into a total |
 | Payment | a `MembershipPayment` row | money lands in the existing membership-dues revenue line |
 | Allowance | a positive `MembershipUsageAdjustment` delta | +N lessons, already period-scoped so it expires correctly |
 
@@ -93,12 +81,14 @@ many lessons are being bought. This matches the precedent already set by
 - Suggest `round(monthlyPrice x daysRemaining / daysInMonth)`, pre-filled and editable. Chosen over
   prorating by scheduled lesson count because it's explainable to a parent at the desk and doesn't
   depend on the schedule already existing at signup.
-- Set `startDate` to the **1st of the next month** and put the agreed stub in `priorChargesCents`. The
-  balance math then needs no changes at all: owed = stub + (periods since the 1st x price) - paid.
+- Set `startDate` to the **1st of the next month** and materialize the agreed stub as a one-off
+  `MembershipCharge` row (no `periodStart`/`periodEnd`, same shape as the ledger's own legacy
+  opening-balance row — see "The membership billing ledger" in Done). The balance math then needs no
+  changes at all: owed = stub + (everything charged since the 1st) - paid.
 - Moving the anchor to the 1st is the whole point — leaving it on the join date bills the student on
   the 17th in perpetuity, which is precisely what proration is meant to avoid.
 - Because the amount is overridable it has to be *stored* rather than re-derived from dates, which is
-  already what `priorChargesCents` does, so supporting the override costs nothing.
+  exactly what a `MembershipCharge` row is for, so supporting the override costs nothing.
 - Offer proration only for monthly memberships. Weekly and biweekly periods are short enough that a
   stub isn't worth the complexity, and the studio's answer only describes the monthly case.
 
@@ -107,11 +97,12 @@ many lessons are being bought. This matches the precedent already set by
 once at module load, so the default is both stale on a front-desk machine left running for days and
 wrong for any mid-month signup. Proration depends on this, so it isn't tracked separately.
 
-**Scope notes.** This needs no per-period charge ledger (see the entry above) — a one-off stub and a
-one-off extra-lesson charge both fit `priorChargesCents` as it stands. The billing math in
-`electron/membershipLogic.ts` has good unit coverage already, so the proration calculation and the
-three-leg charge should get tests there. `src/components/HelpPanel.tsx` will need its Students and
-Settings sections updated to describe both flows.
+**Scope notes.** Both the proration stub and the extra-lesson charge are one-off `MembershipCharge`
+rows, so the per-period ledger this depends on already exists (see "The membership billing ledger" in
+Done) — nothing further to build there. The billing math in `electron/membershipLogic.ts` has good unit
+coverage already, so the proration calculation and the three-leg charge should get tests there.
+`src/components/HelpPanel.tsx` will need its Students and Settings sections updated to describe both
+flows.
 
 ## From the pre-beta code review (not yet addressed)
 The data-loss/startup blockers and the money-correctness findings from that review are fixed (see
@@ -177,6 +168,60 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### The membership billing ledger
+`amountOwedCents` used to be pure arithmetic — `priorChargesCents` + (periods elapsed since `startDate`
+x snapshotted price) - total paid — recomputed fresh on every read with nothing stored in between. A new
+`MembershipCharge` table now records one row per billing period actually charged, at the price that
+applied when it was charged, and the balance is computed by summing those rows against payments instead
+of deriving them. Behavior is unchanged (see below); this was purely an internal readability move, per
+the entry's original framing.
+
+**Materialization.** Charges are created lazily — `ensureChargesMaterialized`, called at the top of
+every balance read, walks every period from `startDate` through now and inserts a row for any that don't
+already have one, at the membership's current effective price. This mirrors exactly how the balance used
+to be recomputed fresh on every read; it's just materialized into rows instead of an in-memory formula.
+A `@@unique([studentMembershipId, periodStart])` constraint makes double-charging a period structurally
+impossible, and the whole operation runs in one transaction so two reads racing the same membership can't
+create the same period twice. A price or cadence change (`applyPlanTermsToActiveMemberships`,
+`updateMembership`'s cadence switch) now closes out the old term by materializing its real per-period
+rows at the OLD price *before* moving the anchor, replacing the old `chargesForTerm` scalar arithmetic —
+so a mid-history price change is preserved with full period-by-period detail instead of being flattened
+into a lump sum the moment it closes.
+
+**The one honest limitation.** History already banked into `priorChargesCents` before this feature
+existed has no recoverable per-period breakdown — only a running total was ever kept, never what each
+period cost. The first time a pre-existing membership's charges are materialized, that value is folded in
+as a single "opening balance" row (`periodStart`/`periodEnd` both null) rather than reconstructed period
+by period, since the original prices and boundaries for that era are simply gone. Every charge from that
+point forward has full detail. `priorChargesCents` itself is left in the schema, deliberately unused,
+since dropping it in the same release that introduces the table it seeds from would destroy the value
+before a real deployment's startup ever got to read it — safe to remove in a later release once that's
+no longer a risk.
+
+**Proving zero behavior change.** The old formula assumed one price applied uniformly to every elapsed
+period since `startDate`; the new one sums real per-period rows and is provably identical whenever that
+assumption held (which is every case the app already supported — the migration guarantees each
+materialized row is priced at exactly what the old formula would have used for that period). The trickiest
+part wasn't the sum — it was `nextDueDate`, which needed a proper FIFO walk (allocate payment against
+charges oldest-first, stopping at the first one not fully covered) rather than the old single-price
+`floor(paid / price)` shortcut, since charges can now legitimately carry different prices across a
+membership's history. 21 of the 22 pre-existing `memberships.test.ts` tests passed unchanged the moment
+the switch was made — including every plan-price-change and cadence-switch regression test from
+"Membership billing no longer re-bills the past" below — which is the actual proof this didn't change
+anyone's balance. Three assertions checked `priorChargesCents` directly rather than a real behavior;
+only one of those actually failed (the other two happened to still pass, since the field is frozen at 0
+and never written anymore — coincidentally right, not meaningfully tested), but all three were rewritten
+to check the ledger rows instead. New coverage: `computeOwedFromCharges`
+gets the same scenarios `computeMembershipBalance` had plus a mixed-price-history case, and
+`memberships.test.ts` gets dedicated ledger tests (one row per elapsed period, no double-charge across
+repeated reads, the legacy value seeding exactly one opening-balance row). 202 tests pass.
+
+Unlocks, now that the data exists: the non-traditional-fees design below no longer needs its own
+"proration fits `priorChargesCents`" argument — a proration stub or a paid extra lesson is just a one-off
+`MembershipCharge` row, the same mechanism the ledger already uses for its own opening balance. A
+"why does this student owe this" view in the Membership dialog is now a cheap follow-up (the data is
+already there), but wasn't built in this pass since the backlog item itself was scoped to the data model.
 
 ### Automatic backups no longer fail invisibly, and a partial write can't pass as a valid backup
 Two gaps in `electron/autoBackup.ts` and `electron/ipc/backup.ts`, both compounding the fact that

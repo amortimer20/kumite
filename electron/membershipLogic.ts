@@ -65,68 +65,87 @@ export function computeMembershipStatus(nextDueDate: Date, now: Date): Membershi
   return msUntilDue <= 0 ? 'overdue' : msUntilDue <= DUE_SOON_WINDOW_MS ? 'due_soon' : 'ok'
 }
 
-// Number of billing periods that have started as of `asOf`, counting the
-// period starting at `startDate` itself as the first one — billing is in
-// advance, so a period is owed for the instant it starts, not when it ends.
-export function periodsElapsed(startDate: Date, frequency: string, asOf: Date): number {
+// Every billing period from `startDate` through the last one that has already
+// started as of `asOf` — billing is in advance, so a period is owed for the
+// instant it starts, not when it ends. Returns bounds rather than just a
+// count so each period can be materialized as its own MembershipCharge row
+// (see electron/ipc/memberships.ts); periodsElapsed below is the count-only
+// convenience for callers that don't need the bounds.
+export function elapsedPeriods(startDate: Date, frequency: string, asOf: Date): { periodStart: Date; periodEnd: Date }[] {
+  const periods: { periodStart: Date; periodEnd: Date }[] = []
   let periodStart = startDate
-  let count = 0
   while (periodStart <= asOf) {
-    count++
-    periodStart = advancePeriod(periodStart, frequency)
+    const periodEnd = advancePeriod(periodStart, frequency)
+    periods.push({ periodStart, periodEnd })
+    periodStart = periodEnd
   }
-  return count
+  return periods
 }
 
-// Balance-based replacement for inferring status from payment coversUntil
-// dates: owed = (everything ever charged) - (total ever paid). Split payments
-// then just work (pay half, owe half) without staff having to guess a
-// coversUntil date, and paying multiple periods in advance naturally produces a
-// credit that covers future periods until it runs out.
+export function periodsElapsed(startDate: Date, frequency: string, asOf: Date): number {
+  return elapsedPeriods(startDate, frequency, asOf).length
+}
+
+// Balance computed from what's actually been charged (see MembershipCharge)
+// rather than derived arithmetic: owed = (everything ever charged) - (total
+// ever paid). Split payments then just work (pay half, owe half) without
+// staff having to guess a coversUntil date, and paying multiple periods in
+// advance naturally produces a credit that covers future periods until it
+// runs out.
 //
-// `priceCents`/`frequency` are the membership's own snapshotted values, not its
-// plan's current ones — the whole balance is recomputed from startDate on every
-// read, so using live plan values meant a plan edit rewrote history for
-// everyone on it.
+// `charges` must already be materialized through `asOf` by the caller — this
+// is pure arithmetic over what's already been charged, not period-walking.
+// Each charge keeps the price that applied when it was charged, so a price
+// change mid-history is reflected automatically without this function
+// needing to know about it.
 //
-// `priorChargesCents` is what was already charged in earlier billing terms.
-// startDate anchors only the current term and is reset when the cadence
-// changes, so without this those earlier periods would stop being owed and the
-// payments against them would turn into credit toward the new term.
-//
-// nextDueDate is the start of the first period of the current term not yet
-// covered by payments — kept for continuity with the existing due-date display
-// and so computeMembershipStatus (which only needs a single date) doesn't change.
-export function computeMembershipBalance(
-  startDate: Date,
-  frequency: string,
-  asOf: Date,
-  priceCents: number,
+// `effectivePriceCents`/`frequency`/`startDate` describe what's charged
+// *next* (not yet materialized, since a not-yet-started period isn't owed
+// yet) — used only to project nextDueDate forward when a payment surplus
+// reaches past every existing charge, and as the fallback due date for a
+// membership with no charges yet (not yet started).
+export function computeOwedFromCharges(
+  charges: { periodStart: Date | null; periodEnd: Date | null; priceCents: number }[],
   totalPaidCents: number,
-  priorChargesCents = 0,
+  effectivePriceCents: number,
+  frequency: string,
+  startDate: Date,
 ): { owedCents: number; nextDueDate: Date } {
-  const elapsed = periodsElapsed(startDate, frequency, asOf)
-  // Payments left over once earlier terms are settled are what can cover the
-  // current term. Clamped at 0 so an unpaid earlier balance doesn't read as
-  // negative credit here (it's still owed — see owedCents below).
-  const creditTowardCurrentTerm = Math.max(0, totalPaidCents - priorChargesCents)
-  // A $0 (comp) plan is always covered through the current period — avoids a
-  // divide-by-zero and matches "free" actually meaning never owed.
-  const periodsCovered = priceCents > 0 ? Math.floor(creditTowardCurrentTerm / priceCents) : elapsed
+  const totalChargedCents = charges.reduce((sum, c) => sum + c.priceCents, 0)
+  const owedCents = Math.max(0, totalChargedCents - totalPaidCents)
 
+  // Allocate payment against charges oldest-first (FIFO) — the same
+  // allocation the old single-price formula did implicitly by walking
+  // forward from startDate a fixed number of "covered" periods, generalized
+  // to charges that can each carry their own price. The opening-balance row
+  // (no bounds — see MembershipCharge) sorts first, since it represents
+  // everything that predates real per-period tracking.
+  const sorted = [...charges].sort((a, b) => (a.periodStart?.getTime() ?? -Infinity) - (b.periodStart?.getTime() ?? -Infinity))
+
+  let remaining = totalPaidCents
   let nextDueDate = startDate
-  for (let i = 0; i < periodsCovered; i++) {
-    nextDueDate = advancePeriod(nextDueDate, frequency)
+  for (const charge of sorted) {
+    if (remaining < charge.priceCents) {
+      // This charge isn't fully paid — it's the due date. The opening-balance
+      // row has no period start of its own; startDate is the closest
+      // meaningful stand-in, same as when nothing has been charged at all.
+      return { owedCents, nextDueDate: charge.periodStart ?? startDate }
+    }
+    remaining -= charge.priceCents
+    if (charge.periodEnd) nextDueDate = charge.periodEnd
   }
 
-  const owedCents = Math.max(0, priorChargesCents + elapsed * priceCents - totalPaidCents)
+  // Every existing charge is fully covered — any payment left over is a
+  // credit toward periods that haven't been charged yet. A $0 (comp) plan is
+  // always covered through the last charged period regardless of surplus,
+  // which also avoids a divide-by-zero.
+  if (effectivePriceCents > 0) {
+    const periodsCoveredAhead = Math.floor(remaining / effectivePriceCents)
+    for (let i = 0; i < periodsCoveredAhead; i++) {
+      nextDueDate = advancePeriod(nextDueDate, frequency)
+    }
+  }
   return { owedCents, nextDueDate }
-}
-
-// What a term that is being closed out has charged in total, so it can be
-// carried into priorChargesCents when the billing anchor is reset.
-export function chargesForTerm(startDate: Date, frequency: string, asOf: Date, priceCents: number): number {
-  return periodsElapsed(startDate, frequency, asOf) * priceCents
 }
 
 // A positive delta is a credit (e.g. "+1 bonus lesson"), so it reduces the

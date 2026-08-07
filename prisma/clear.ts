@@ -29,6 +29,7 @@ async function main() {
   await prisma.recurringSeries.deleteMany()
   await prisma.membershipUsageAdjustment.deleteMany()
   await prisma.membershipPayment.deleteMany()
+  await prisma.membershipCharge.deleteMany()
   await prisma.studentMembership.deleteMany()
   await prisma.membershipPlan.deleteMany()
   // PosSaleItem cascades automatically when its PosSale is deleted, so it

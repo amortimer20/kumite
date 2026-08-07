@@ -226,13 +226,15 @@ model StudentMembership {
   // signed up at until explicitly moved.
   billedPriceCents   Int
   billingFrequency   String
-  // Total ever charged across earlier, now-closed billing terms. startDate is
-  // the anchor for the *current* term only, and it gets reset when a student
-  // moves to a plan with a different cadence — without this, the periods
-  // before that reset would simply stop being owed, and payments made against
-  // them would be counted as credit toward the new term (a student who had
-  // paid $700 monthly and moved to a $50 weekly plan came out 14 weeks
-  // prepaid). Charges accumulate here so owed stays (ever charged - ever paid).
+  // Deprecated: superseded by MembershipCharge below, which now records each
+  // period's charge as its own row instead of a single running total. Kept
+  // only because it's the sole surviving record of what was already charged
+  // before that table existed — charges.ts reads it exactly once per
+  // membership, the first time its charges are materialized, to fold that
+  // history in as one "opening balance" row. Nothing writes to this field
+  // anymore. Safe to drop in a later release once every real deployment has
+  // had a chance to materialize at least once (dropping it sooner, before
+  // that read has happened, would destroy the balance it's the last copy of).
   priorChargesCents  Int                         @default(0)
   startDate          DateTime
   // Set to false when the student is archived/deleted, or they cancel
@@ -241,9 +243,42 @@ model StudentMembership {
   createdAt          DateTime                    @default(now())
   payments           MembershipPayment[]
   usageAdjustments   MembershipUsageAdjustment[]
+  charges            MembershipCharge[]
 
   @@index([studentId])
   @@index([planId])
+}
+
+// One row per billing period actually charged, at the price that applied when
+// it was charged — the source of truth for what a membership owes, replacing
+// the old priorChargesCents + "periods elapsed x current price" arithmetic.
+// Rows are immutable once created: a later price or cadence change never
+// rewrites an already-charged period, it only changes what future rows
+// charge. Materialized lazily (see electron/ipc/memberships.ts) rather than
+// on a schedule — a period only needs a row by the time someone reads the
+// balance, same as the old formula only needed to be evaluated on read.
+model MembershipCharge {
+  id                  String            @id @default(cuid())
+  studentMembership   StudentMembership @relation(fields: [studentMembershipId], references: [id])
+  studentMembershipId String
+  // Both null only for the one-time "opening balance" row created the first
+  // time a pre-existing membership's charges are materialized under this
+  // model — it folds in whatever priorChargesCents had already accumulated
+  // before individual periods were tracked one at a time. That history's
+  // original per-period breakdown was never kept (only ever a running total),
+  // so it can't be reconstructed and is represented as a single dated line
+  // instead. Every row created from this point forward has real bounds.
+  periodStart         DateTime?
+  periodEnd           DateTime?
+  priceCents          Int
+  createdAt           DateTime          @default(now())
+
+  // Guards against ever double-charging the same period — the one invariant
+  // that actually matters here. Doesn't constrain the opening-balance row
+  // (periodStart is null there), but application code only ever creates one
+  // of those per membership.
+  @@unique([studentMembershipId, periodStart])
+  @@index([studentMembershipId])
 }
 
 // Status is computed from a running balance (periods elapsed since the

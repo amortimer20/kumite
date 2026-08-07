@@ -102,10 +102,11 @@ export async function deleteStudent(id: string, options?: { force?: boolean }) {
     await prisma.$transaction([
       prisma.lesson.deleteMany({ where: { studentId: id } }),
       prisma.recurringSeries.deleteMany({ where: { studentId: id } }),
-      // Payments/adjustments must go before their StudentMembership rows,
-      // which must go before the student itself — all restrict-on-delete.
+      // Payments/adjustments/charges must go before their StudentMembership
+      // rows, which must go before the student itself — all restrict-on-delete.
       prisma.membershipUsageAdjustment.deleteMany({ where: { studentMembership: { studentId: id } } }),
       prisma.membershipPayment.deleteMany({ where: { studentMembership: { studentId: id } } }),
+      prisma.membershipCharge.deleteMany({ where: { studentMembership: { studentId: id } } }),
       prisma.studentMembership.deleteMany({ where: { studentId: id } }),
       prisma.student.delete({ where: { id } }),
     ])

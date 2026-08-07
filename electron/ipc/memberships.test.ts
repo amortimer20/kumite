@@ -220,9 +220,12 @@ describe('applyPlanTermsToActiveMemberships', () => {
     expect(updated).toBe(1)
 
     const row = await mockPrisma.studentMembership.findUniqueOrThrow({ where: { id: membership.id } })
-    // The three elapsed periods are banked at $100, NOT the new $120 — the past
-    // is never rewritten.
-    expect(row.priorChargesCents).toBe(30_000)
+    // The three elapsed periods are each recorded at $100, NOT the new $120 —
+    // the past is never rewritten, and each keeps its own row rather than
+    // being flattened into a single banked total.
+    const charges = await mockPrisma.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+    expect(charges).toHaveLength(3)
+    expect(charges.every((c) => c.priceCents === 10_000)).toBe(true)
     // Going forward the membership bills at the new price…
     expect(row.billedPriceCents).toBe(12_000)
     // …anchored to the current period's end, so the billing day doesn't shift.
@@ -278,7 +281,13 @@ describe('applyPlanTermsToActiveMemberships', () => {
     const customRow = await mockPrisma.studentMembership.findUniqueOrThrow({ where: { id: customMembership.id } })
     expect(customRow.priceOverrideCents).toBe(7_000)
     expect(customRow.billedPriceCents).toBe(10_000)
-    expect(customRow.priorChargesCents).toBe(0)
+    // assignMembership's own read already materialized this membership's
+    // charges at its custom price — applyPlanTermsToActiveMemberships filtered
+    // it out of the query entirely, so none of them were re-priced to $120
+    // (or, since it was never touched, even re-created at the plan's old $100).
+    const customCharges = await mockPrisma.membershipCharge.findMany({ where: { studentMembershipId: customMembership.id } })
+    expect(customCharges.length).toBeGreaterThan(0)
+    expect(customCharges.every((c) => c.priceCents === 7_000)).toBe(true)
   })
 
   it('adopts the new terms without re-anchoring a not-yet-started membership', async () => {
@@ -300,7 +309,78 @@ describe('applyPlanTermsToActiveMemberships', () => {
     // here would swallow the member's first period.
     expect(row.billedPriceCents).toBe(12_000)
     expect(row.startDate.getTime()).toBe(futureStart.getTime())
-    expect(row.priorChargesCents).toBe(0)
+    // Nothing has started yet, so nothing was materialized.
+    const charges = await mockPrisma.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+    expect(charges).toHaveLength(0)
+  })
+})
+
+// The ledger itself: MembershipCharge is what amountOwedCents is now actually
+// computed from (see ensureChargesMaterialized/computeOwedFromCharges), so
+// these test the materialization mechanics directly rather than only through
+// the balance they produce.
+describe('membership charge ledger', () => {
+  it('materializes one charge row per elapsed period, at the price in effect', async () => {
+    const student = await makeStudent()
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const startDate = new Date(Date.now() - 70 * DAY_MS) // 3 monthly periods elapsed
+    const membership = await assignMembership(student.id, { planId: plan.id, startDate: startDate.toISOString() })
+
+    await getMembershipForStudent(student.id)
+
+    const charges = await mockPrisma.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+    expect(charges).toHaveLength(3)
+    expect(charges.every((c) => c.priceCents === 10_000)).toBe(true)
+  })
+
+  it('does not double-charge a period already materialized by an earlier read', async () => {
+    const student = await makeStudent()
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    const membership = await assignMembership(student.id, {
+      planId: plan.id,
+      startDate: new Date(Date.now() - 70 * DAY_MS).toISOString(),
+    })
+
+    await getMembershipForStudent(student.id)
+    await getMembershipForStudent(student.id)
+    await getMembershipForStudent(student.id)
+
+    const charges = await mockPrisma.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+    expect(charges).toHaveLength(3) // still 3, not 9
+  })
+
+  it('seeds one opening-balance row from a pre-existing priorChargesCents value, exactly once', async () => {
+    const student = await makeStudent()
+    const plan = await mockPrisma.membershipPlan.create({
+      data: { title: 'Monthly', billingFrequency: 'monthly', priceCents: 10_000 },
+    })
+    // Simulates a membership that already had a banked balance from before
+    // this ledger existed — created directly rather than via assignMembership,
+    // which always starts a fresh membership at priorChargesCents 0.
+    const membership = await mockPrisma.studentMembership.create({
+      data: {
+        studentId: student.id,
+        planId: plan.id,
+        billedPriceCents: 10_000,
+        billingFrequency: 'monthly',
+        priorChargesCents: 45_000,
+        startDate: new Date(),
+      },
+    })
+
+    const first = await getMembershipForStudent(student.id)
+    expect(first?.amountOwedCents).toBe(45_000 + 10_000) // legacy balance + the current period
+
+    await getMembershipForStudent(student.id) // a second read must not re-seed it
+
+    const charges = await mockPrisma.membershipCharge.findMany({ where: { studentMembershipId: membership.id } })
+    const openingBalanceRows = charges.filter((c) => c.periodStart === null)
+    expect(openingBalanceRows).toHaveLength(1)
+    expect(openingBalanceRows[0].priceCents).toBe(45_000)
   })
 })
 
