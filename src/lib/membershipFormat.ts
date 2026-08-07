@@ -18,12 +18,14 @@ export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
 export const MEMBERSHIP_STATUS_LABEL: Record<MembershipStatus, string> = {
   ok: 'OK',
   due_soon: 'Due soon',
+  due: 'Due',
   overdue: 'Overdue',
 }
 
 export const MEMBERSHIP_STATUS_COLOR: Record<MembershipStatus, string> = {
   ok: 'text-green-500',
   due_soon: 'text-amber-500',
+  due: 'text-orange-500',
   overdue: 'text-destructive',
 }
 

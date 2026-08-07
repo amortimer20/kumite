@@ -55,14 +55,21 @@ export function currentPeriodBounds(startDate: Date, frequency: string, asOf: Da
   return { periodStart, periodEnd }
 }
 
-// Window before the actual due date where status shows "due soon" — distinct
-// from the overdue threshold itself, which per product decision has zero
-// grace period (overdue the instant the due date passes).
+// Window before the actual due date where status shows "due soon".
 export const DUE_SOON_WINDOW_MS = 3 * 24 * 60 * 60 * 1000
+
+// Window after the due date where status shows "due" rather than "overdue" —
+// students here pay in person at their next lesson, not on the due date
+// itself, so a due date landing on a day they don't train (e.g. the 1st
+// falling on a Sunday, first lesson back Saturday) shouldn't read as overdue
+// before they've had a real chance to pay.
+export const GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000
 
 export function computeMembershipStatus(nextDueDate: Date, now: Date): MembershipStatus {
   const msUntilDue = nextDueDate.getTime() - now.getTime()
-  return msUntilDue <= 0 ? 'overdue' : msUntilDue <= DUE_SOON_WINDOW_MS ? 'due_soon' : 'ok'
+  if (msUntilDue > DUE_SOON_WINDOW_MS) return 'ok'
+  if (msUntilDue > 0) return 'due_soon'
+  return -msUntilDue <= GRACE_PERIOD_MS ? 'due' : 'overdue'
 }
 
 // Every billing period from `startDate` through the last one that has already

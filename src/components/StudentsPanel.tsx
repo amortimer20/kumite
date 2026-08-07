@@ -690,7 +690,7 @@ export function StudentsPanel() {
           <DialogHeader>
             <DialogTitle>Edit Student</DialogTitle>
           </DialogHeader>
-          <form className="flex flex-col gap-3" onSubmit={handleSaveEdit}>
+          <form id="edit-student-form" className="flex flex-col gap-3" onSubmit={handleSaveEdit}>
             <div className="flex gap-2">
               <div className="flex-1">
                 <Label className="mb-1">First name</Label>
@@ -794,11 +794,6 @@ export function StudentsPanel() {
             </div>
 
             {editError && <p className="text-sm text-destructive">{editError}</p>}
-
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditingStudent(null)}>Cancel</Button>
-              <Button type="submit">Save</Button>
-            </DialogFooter>
           </form>
 
           <div className="mt-2 border-t border-border pt-3">
@@ -856,6 +851,11 @@ export function StudentsPanel() {
             </form>
             {familyError && <p className="mt-1 text-sm text-destructive">{familyError}</p>}
           </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingStudent(null)}>Cancel</Button>
+            <Button type="submit" form="edit-student-form">Save</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

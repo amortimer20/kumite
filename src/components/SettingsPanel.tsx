@@ -696,6 +696,10 @@ export function SettingsPanel() {
                     )}
                   </div>
                   <div>
+                    <Label className="mb-1">Developer</Label>
+                    <p className="text-sm">Anthony Mortimer</p>
+                  </div>
+                  <div>
                     <Label className="mb-1">Database location</Label>
                     {appInfo ? (
                       <Input readOnly className="max-w-md" value={appInfo.dbPath} />

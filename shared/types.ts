@@ -278,7 +278,7 @@ export interface MembershipPlanInput {
   active?: boolean
 }
 
-export type MembershipStatus = 'ok' | 'due_soon' | 'overdue'
+export type MembershipStatus = 'ok' | 'due_soon' | 'due' | 'overdue'
 
 export interface MembershipPayment {
   id: string
