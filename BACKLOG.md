@@ -2,6 +2,9 @@
 
 Feature ideas discussed but not yet implemented, roughly in the order we'd want to tackle them.
 
+**Status: feature-complete for the first iteration.** The one open item below is blocked on an
+external asset, not on any remaining code work.
+
 ## Black belt certificate templates (1st-10th degree) still placeholders
 Yellow through Brown 1st now have the studio's real certificate designs (see Done below), but no
 Black-belt templates exist yet — `scripts/generate-placeholder-certificates.ts` still generates
