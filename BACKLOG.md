@@ -27,21 +27,6 @@ The data-loss/startup blockers and the money-correctness findings from that revi
 Done). These are the rest, kept in one place so they don't get lost. Roughly in the order worth
 tackling.
 
-### Most api.* failures are still silent
-A global `unhandledrejection` handler now exists (see Done) — it toasts the error for any rejected
-promise no local handler caught, so a failed IPC call no longer looks like a dead click. That's the
-safety net; what remains is the targeted work it doesn't replace. Most mutating `api.*` calls still
-have no `try/catch` of their own; the established convention is `catch (err) { toast.error(getErrorMessage(err)) }`
-and every `onSubmit` follows it, but most non-submit handlers rely on the global net rather than
-handling their own failure inline (which can leave optimistic UI state ahead of a write that never
-landed). Worth doing in the same pass:
-`SettingsPanel.tsx`'s business-hours handler updates state optimistically then awaits with no catch, so
-a failed write leaves the UI showing a value the database never took. Also every *initial* fetch is
-uncaught, which is worse than it sounds — `DashboardPanel.tsx` clears `loading` in `.finally`, so if its
-three parallel calls reject the dashboard confidently renders "0 Active students", "$0.00 Collected this
-month" and "All memberships are up to date." A generic "couldn't load" state would be a big improvement.
-(The error boundary half of this entry is done — see Done.)
-
 ### The installer still ships bundled libraries a second time
 Partly addressed: moving the build-only packages to `devDependencies` and cleaning `dist-electron`
 between builds took `app.asar` from 243 MB to 81 MB and the DMG from 160 MB to 128 MB. What remains is
@@ -86,6 +71,35 @@ commented-out line, the default `/vite.svg` favicon and the two unused `public/e
 files — are all removed too.)
 
 ## Done
+
+### Most api.* failures are no longer silent
+The global `unhandledrejection` toast (see below) was the safety net; this closes the two gaps it
+didn't replace. First, every panel's *initial* data fetch was uncaught, so a failed load didn't fail
+loudly — it rendered the confidently-empty defaults as if they were real answers. `DashboardPanel`
+would show "0 Active students", "$0.00 Collected this month", and "All memberships are up to date";
+`StudentMembershipDialog` would show "This student doesn't have a membership yet" for a student who
+has one. A new shared `LoadErrorBanner` (message + Retry button) now replaces that confidently-wrong
+content across every panel with an initial load: `DashboardPanel`, `StudentsPanel`, `InstructorsPanel`,
+`PosPanel`, `CertificatesPanel`, `StudentMembershipDialog`, `SchedulePanel` (both its form-data lists
+and, separately, the lessons table itself), and `SettingsPanel` (each of its four independent loads —
+hours, plans, backup settings, and about — gets its own banner and Retry, so one failing doesn't hide
+the others). Second, most non-submit mutating handlers (reactivate, delete, family-member edits, plan
+archive/reactivate, the auto-backup checkboxes/selects) had no `try/catch` of their own and relied
+entirely on the generic global toast; they now follow the same `catch (err) { toast.error(getErrorMessage(err)) }`
+convention every `onSubmit` already used.
+
+Two real bugs turned up along the way, not just missing catches. `CertificatesPanel`'s certificate-type
+switch set `certificateType` before its ranks fetch resolved, with no rollback — a failed fetch left
+the type pointing at "junior" while `availableRanks` still listed regular-only ranks, letting a
+mismatched rank get selected; it now reverts the type on failure. `SchedulePanel`'s inline lesson-notes
+editor closed itself *before* the save resolved, so a failed write silently discarded the typed note
+with no way to recover it beyond the generic toast; it now stays open until the write actually
+succeeds. Verified by temporarily throwing inside `students:list`, rebuilding, and screenshotting both
+the Dashboard and Students tab showing the new banner with a working Retry, then reverting and
+re-verifying the normal path renders exactly as before. No new tests — same reasoning as the
+stale-response-race guards below: these are component-lifecycle behaviors with no renderer test
+infrastructure, verified by typecheck, lint, the full suite (220 tests, unchanged), and this manual
+fault-injection pass.
 
 ### Non-traditional membership fees — paid extra lessons and proration
 The last feature-shaped gap before the app was feature-complete for its first iteration. Two related

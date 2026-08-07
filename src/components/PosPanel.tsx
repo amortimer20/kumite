@@ -9,6 +9,7 @@ import { getErrorMessage } from '@/lib/errors'
 import { reconcileCart } from '@/lib/posCart'
 import type { CartLine } from '@/lib/posCart'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
+import { LoadErrorBanner } from './LoadErrorBanner'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -60,6 +61,7 @@ export function PosPanel() {
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
@@ -96,10 +98,17 @@ export function PosPanel() {
     })
   }
 
+  function load() {
+    setLoading(true)
+    Promise.all([refresh(), api.students.list().then((list) => setStudents(list.filter((s) => s.active)))])
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(getErrorMessage(err)))
+      .finally(() => setLoading(false))
+  }
+
   useEffect(() => {
-    Promise.all([refresh(), api.students.list().then((list) => setStudents(list.filter((s) => s.active)))]).finally(() =>
-      setLoading(false),
-    )
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function addToCart(item: PosItem) {
@@ -158,9 +167,13 @@ export function PosPanel() {
   async function handleDeleteSale(sale: PosSale) {
     const confirmed = window.confirm(`Delete this ${formatCents(sale.totalCents)} sale? This cannot be undone.`)
     if (!confirmed) return
-    await api.posSales.delete(sale.id)
-    toast.success('Sale deleted.')
-    await refresh()
+    try {
+      await api.posSales.delete(sale.id)
+      toast.success('Sale deleted.')
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   async function handleAddItem(e: React.FormEvent) {
@@ -221,19 +234,27 @@ export function PosPanel() {
   async function handleDeleteItem(item: PosItem) {
     const confirmed = window.confirm(`Delete ${item.name}? This cannot be undone.`)
     if (!confirmed) return
-    const { archived } = await api.posItems.delete(item.id)
-    if (archived) {
-      toast.info(`${item.name} has been sold before, so it was archived instead of deleted.`)
-    } else {
-      toast.success(`${item.name} deleted.`)
+    try {
+      const { archived } = await api.posItems.delete(item.id)
+      if (archived) {
+        toast.info(`${item.name} has been sold before, so it was archived instead of deleted.`)
+      } else {
+        toast.success(`${item.name} deleted.`)
+      }
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
     }
-    await refresh()
   }
 
   async function handleReactivateItem(item: PosItem) {
-    await api.posItems.update(item.id, { active: true })
-    toast.success(`${item.name} reactivated.`)
-    await refresh()
+    try {
+      await api.posItems.update(item.id, { active: true })
+      toast.success(`${item.name} reactivated.`)
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   const visibleCatalogItems = items.filter(
@@ -248,6 +269,10 @@ export function PosPanel() {
         <Button variant="outline" onClick={() => setManageOpen(true)}>Manage Items</Button>
       </div>
 
+      {loadError && !loading ? (
+        <LoadErrorBanner message={`Couldn't load POS: ${loadError}`} onRetry={load} />
+      ) : (
+        <>
       <div className="flex gap-4">
         <div className="flex-1">
           <Input
@@ -390,6 +415,8 @@ export function PosPanel() {
           </TableBody>
         </Table>
       </div>
+        </>
+      )}
 
       <Dialog open={manageOpen} onOpenChange={setManageOpen}>
         <DialogContent className="sm:max-w-lg">

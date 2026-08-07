@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { api } from '../api'
 import { AUTO_BACKUP_FREQUENCIES, AUTO_BACKUP_KEEP_COUNTS, MEMBERSHIP_BILLING_FREQUENCIES } from '../../shared/types'
 import type { AppInfo, AppSettings, AppSettingsInput, AutoBackupFrequency, BusinessHours, MembershipBillingFrequency, MembershipPlan } from '../../shared/types'
+import { LoadErrorBanner } from './LoadErrorBanner'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -74,17 +75,21 @@ export function SettingsPanel() {
   const [hours, setHours] = useState<BusinessHours[]>([])
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
+  const [hoursLoadError, setHoursLoadError] = useState<string | null>(null)
   const [restoring, setRestoring] = useState(false)
 
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [settingsLoading, setSettingsLoading] = useState(true)
+  const [settingsLoadError, setSettingsLoadError] = useState<string | null>(null)
   const [choosingDirectory, setChoosingDirectory] = useState(false)
 
   const [appInfo, setAppInfo] = useState<AppInfo | null>(null)
+  const [appInfoLoadError, setAppInfoLoadError] = useState<string | null>(null)
 
   const [plans, setPlans] = useState<MembershipPlan[]>([])
   const [plansLoading, setPlansLoading] = useState(true)
   const showPlansSkeleton = useDelayedFlag(plansLoading)
+  const [plansLoadError, setPlansLoadError] = useState<string | null>(null)
   const [showArchivedPlans, setShowArchivedPlans] = useState(false)
   const [addPlanForm, setAddPlanForm] = useState(EMPTY_PLAN_FORM)
   const [addPlanFormKey, setAddPlanFormKey] = useState(0)
@@ -102,20 +107,56 @@ export function SettingsPanel() {
   const [applyPrompt, setApplyPrompt] = useState<{ planId: string; title: string; studentCount: number } | null>(null)
   const [applyingToExisting, setApplyingToExisting] = useState(false)
 
-  useEffect(() => {
-    api.businessHours.list().then(setHours).finally(() => setLoading(false))
-  }, [])
+  function loadHours() {
+    setLoading(true)
+    api.businessHours
+      .list()
+      .then((result) => {
+        setHours(result)
+        setHoursLoadError(null)
+      })
+      .catch((err) => setHoursLoadError(getErrorMessage(err)))
+      .finally(() => setLoading(false))
+  }
 
   useEffect(() => {
-    api.settings.get().then(setSettings).finally(() => setSettingsLoading(false))
+    loadHours()
   }, [])
 
+  function loadSettings() {
+    setSettingsLoading(true)
+    api.settings
+      .get()
+      .then((result) => {
+        setSettings(result)
+        setSettingsLoadError(null)
+      })
+      .catch((err) => setSettingsLoadError(getErrorMessage(err)))
+      .finally(() => setSettingsLoading(false))
+  }
+
   useEffect(() => {
-    api.appInfo.get().then(setAppInfo)
+    loadSettings()
+  }, [])
+
+  function loadAppInfo() {
+    setAppInfoLoadError(null)
+    api.appInfo
+      .get()
+      .then(setAppInfo)
+      .catch((err) => setAppInfoLoadError(getErrorMessage(err)))
+  }
+
+  useEffect(() => {
+    loadAppInfo()
   }, [])
 
   async function updateSettings(patch: AppSettingsInput) {
-    setSettings(await api.settings.update(patch))
+    try {
+      setSettings(await api.settings.update(patch))
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   async function handleChooseBackupDirectory() {
@@ -125,6 +166,8 @@ export function SettingsPanel() {
       if (!result.canceled && result.path) {
         await updateSettings({ autoBackupDirectory: result.path })
       }
+    } catch (err) {
+      toast.error(getErrorMessage(err))
     } finally {
       setChoosingDirectory(false)
     }
@@ -134,8 +177,17 @@ export function SettingsPanel() {
     setPlans(await api.membershipPlans.list())
   }
 
+  function loadPlans() {
+    setPlansLoading(true)
+    refreshPlans()
+      .then(() => setPlansLoadError(null))
+      .catch((err) => setPlansLoadError(getErrorMessage(err)))
+      .finally(() => setPlansLoading(false))
+  }
+
   useEffect(() => {
-    refreshPlans().finally(() => setPlansLoading(false))
+    loadPlans()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleAddPlan(e: React.FormEvent) {
@@ -176,19 +228,27 @@ export function SettingsPanel() {
     const confirmed = window.confirm(`Delete ${plan.title}? This cannot be undone.`)
     if (!confirmed) return
 
-    const { archived } = await api.membershipPlans.delete(plan.id)
-    if (archived) {
-      toast.info(`${plan.title} has students on it, so it was archived instead of deleted.`)
-    } else {
-      toast.success(`${plan.title} deleted.`)
+    try {
+      const { archived } = await api.membershipPlans.delete(plan.id)
+      if (archived) {
+        toast.info(`${plan.title} has students on it, so it was archived instead of deleted.`)
+      } else {
+        toast.success(`${plan.title} deleted.`)
+      }
+      await refreshPlans()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
     }
-    await refreshPlans()
   }
 
   async function handleReactivatePlan(plan: MembershipPlan) {
-    await api.membershipPlans.update(plan.id, { active: true })
-    toast.success(`${plan.title} reactivated.`)
-    await refreshPlans()
+    try {
+      await api.membershipPlans.update(plan.id, { active: true })
+      toast.success(`${plan.title} reactivated.`)
+      await refreshPlans()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   function openEditPlan(plan: MembershipPlan) {
@@ -347,7 +407,9 @@ export function SettingsPanel() {
                         </div>
                       ))
                     : null
-                  : hours.map((h) => (
+                  : hoursLoadError
+                    ? <LoadErrorBanner message={`Couldn't load business hours: ${hoursLoadError}`} onRetry={loadHours} />
+                    : hours.map((h) => (
                       <div key={h.dayOfWeek} className="flex items-center gap-4 border-b border-border pb-3 last:border-0">
                         <span className="w-28 shrink-0 font-medium">{DAY_LABEL[h.dayOfWeek]}</span>
                         <div className="flex items-center gap-2">
@@ -457,6 +519,12 @@ export function SettingsPanel() {
                 <TableBody>
                   {plansLoading ? (
                     showPlansSkeleton ? <TableSkeletonRows columns={6} /> : null
+                  ) : plansLoadError ? (
+                    <TableRow>
+                      <TableCell colSpan={6}>
+                        <LoadErrorBanner message={`Couldn't load membership plans: ${plansLoadError}`} onRetry={loadPlans} />
+                      </TableCell>
+                    </TableRow>
                   ) : (
                     <>
                       {plans
@@ -523,6 +591,8 @@ export function SettingsPanel() {
                 </p>
                 {settingsLoading ? (
                   <Skeleton className="h-9 w-64" />
+                ) : settingsLoadError ? (
+                  <LoadErrorBanner message={`Couldn't load backup settings: ${settingsLoadError}`} onRetry={loadSettings} />
                 ) : (
                   settings && (
                     <div className="flex flex-col gap-3">
@@ -613,22 +683,28 @@ export function SettingsPanel() {
 
           {section === 'about' && (
             <div className="flex flex-col gap-3">
-              <div>
-                <Label className="mb-1">Version</Label>
-                {appInfo ? (
-                  <p className="text-sm">Kumite {appInfo.version}</p>
-                ) : (
-                  <Skeleton className="h-5 w-24" />
-                )}
-              </div>
-              <div>
-                <Label className="mb-1">Database location</Label>
-                {appInfo ? (
-                  <Input readOnly className="max-w-md" value={appInfo.dbPath} />
-                ) : (
-                  <Skeleton className="h-9 w-64" />
-                )}
-              </div>
+              {appInfoLoadError ? (
+                <LoadErrorBanner message={`Couldn't load app info: ${appInfoLoadError}`} onRetry={loadAppInfo} />
+              ) : (
+                <>
+                  <div>
+                    <Label className="mb-1">Version</Label>
+                    {appInfo ? (
+                      <p className="text-sm">Kumite {appInfo.version}</p>
+                    ) : (
+                      <Skeleton className="h-5 w-24" />
+                    )}
+                  </div>
+                  <div>
+                    <Label className="mb-1">Database location</Label>
+                    {appInfo ? (
+                      <Input readOnly className="max-w-md" value={appInfo.dbPath} />
+                    ) : (
+                      <Skeleton className="h-9 w-64" />
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

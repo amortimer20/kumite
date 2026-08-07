@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import type { CertificateType, Student } from '../../shared/types'
+import { LoadErrorBanner } from './LoadErrorBanner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -49,12 +50,21 @@ export function CertificatesPanel() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  useEffect(() => {
+  function load() {
+    setLoading(true)
     Promise.all([
       api.students.list().then((all) => setStudents(all.filter((s) => s.active))),
       api.certificates.listAvailableRanks(certificateType).then(setAvailableRanks),
-    ]).finally(() => setLoading(false))
+    ])
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(getErrorMessage(err)))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    load()
     // Only the initial load — handleTypeChange refetches when the type changes later.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -79,11 +89,20 @@ export function CertificatesPanel() {
   }
 
   async function handleTypeChange(type: CertificateType) {
+    // Optimistic, but rolled back below on failure — otherwise a failed
+    // fetch leaves certificateType pointing at "junior" while availableRanks
+    // still lists regular-only ranks, letting a mismatched rank be selected.
+    const previousType = certificateType
     setCertificateType(type)
-    const ranks = await api.certificates.listAvailableRanks(type)
-    setAvailableRanks(ranks)
-    const defaultRank = selectedPerson?.rank
-    setRank(defaultRank && ranks.includes(defaultRank) ? defaultRank : undefined)
+    try {
+      const ranks = await api.certificates.listAvailableRanks(type)
+      setAvailableRanks(ranks)
+      const defaultRank = selectedPerson?.rank
+      setRank(defaultRank && ranks.includes(defaultRank) ? defaultRank : undefined)
+    } catch (err) {
+      setCertificateType(previousType)
+      toast.error(getErrorMessage(err))
+    }
   }
 
   async function handlePrint(e: React.FormEvent) {
@@ -107,7 +126,9 @@ export function CertificatesPanel() {
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Certificates</h2>
-      {loading ? (
+      {loadError && !loading ? (
+        <LoadErrorBanner message={`Couldn't load certificates: ${loadError}`} onRetry={load} />
+      ) : loading ? (
         showSkeleton ? (
           <div className="flex max-w-md flex-col gap-3">
             <div>

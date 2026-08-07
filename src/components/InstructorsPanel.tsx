@@ -6,6 +6,7 @@ import type { Instructor } from '../../shared/types'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
 import { getErrorMessage } from '@/lib/errors'
+import { LoadErrorBanner } from './LoadErrorBanner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -71,13 +72,23 @@ export function InstructorsPanel() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   async function refresh() {
     setInstructors(await api.instructors.list())
   }
 
+  function load() {
+    setLoading(true)
+    refresh()
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(getErrorMessage(err)))
+      .finally(() => setLoading(false))
+  }
+
   useEffect(() => {
-    refresh().finally(() => setLoading(false))
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleAdd(e: React.FormEvent) {
@@ -117,19 +128,27 @@ export function InstructorsPanel() {
     const confirmed = window.confirm(message)
     if (!confirmed) return
 
-    const { archived } = await api.instructors.delete(instructor.id)
-    if (archived) {
-      toast.info(`${instructor.firstName} ${instructor.lastName} has lesson history, so they were archived instead of deleted.`)
-    } else {
-      toast.success(`${instructor.firstName} ${instructor.lastName} deleted.`)
+    try {
+      const { archived } = await api.instructors.delete(instructor.id)
+      if (archived) {
+        toast.info(`${instructor.firstName} ${instructor.lastName} has lesson history, so they were archived instead of deleted.`)
+      } else {
+        toast.success(`${instructor.firstName} ${instructor.lastName} deleted.`)
+      }
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
     }
-    await refresh()
   }
 
   async function handleReactivate(instructor: Instructor) {
-    await api.instructors.update(instructor.id, { active: true })
-    toast.success(`${instructor.firstName} ${instructor.lastName} reactivated.`)
-    await refresh()
+    try {
+      await api.instructors.update(instructor.id, { active: true })
+      toast.success(`${instructor.firstName} ${instructor.lastName} reactivated.`)
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   function openEdit(instructor: Instructor) {
@@ -197,6 +216,12 @@ export function InstructorsPanel() {
         <TableBody>
           {loading ? (
             showSkeleton ? <TableSkeletonRows columns={2} /> : null
+          ) : loadError ? (
+            <TableRow>
+              <TableCell colSpan={2}>
+                <LoadErrorBanner message={`Couldn't load instructors: ${loadError}`} onRetry={load} />
+              </TableCell>
+            </TableRow>
           ) : (
             <>
               {visibleInstructors.map((i) => (

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { api } from '../api'
 import { STUDENT_RANKS } from '../../shared/types'
 import type { FamilyMember, FamilyMemberInput, Lesson, Student, StudentInput } from '../../shared/types'
+import { LoadErrorBanner } from './LoadErrorBanner'
 import { RecurringLessonDeleteDialog } from './RecurringLessonDeleteDialog'
 import { StudentMembershipDialog } from './StudentMembershipDialog'
 import { TableSkeletonRows } from './TableSkeletonRows'
@@ -149,6 +150,7 @@ export function StudentsPanel() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const showSkeleton = useDelayedFlag(loading)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   async function refresh() {
     const updated = await api.students.list()
@@ -158,8 +160,17 @@ export function StudentsPanel() {
     setEditingStudent((prev) => (prev ? (updated.find((s) => s.id === prev.id) ?? null) : prev))
   }
 
+  function load() {
+    setLoading(true)
+    refresh()
+      .then(() => setLoadError(null))
+      .catch((err) => setLoadError(getErrorMessage(err)))
+      .finally(() => setLoading(false))
+  }
+
   useEffect(() => {
-    refresh().finally(() => setLoading(false))
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function openAddDialog() {
@@ -251,9 +262,13 @@ export function StudentsPanel() {
   }
 
   async function handleReactivate(student: Student) {
-    await api.students.update(student.id, { active: true })
-    toast.success(`${student.firstName} ${student.lastName} reactivated.`)
-    await refresh()
+    try {
+      await api.students.update(student.id, { active: true })
+      toast.success(`${student.firstName} ${student.lastName} reactivated.`)
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   function openEdit(student: Student) {
@@ -310,8 +325,12 @@ export function StudentsPanel() {
   }
 
   async function handleFamilyMemberRankChange(id: string, rank: string) {
-    await api.familyMembers.update(id, { rank })
-    await refresh()
+    try {
+      await api.familyMembers.update(id, { rank })
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   async function handleDeleteFamilyMember(familyMember: FamilyMember) {
@@ -320,9 +339,13 @@ export function StudentsPanel() {
     )
     if (!confirmed) return
 
-    await api.familyMembers.delete(familyMember.id)
-    toast.success(`${familyMember.firstName} ${familyMember.lastName} removed.`)
-    await refresh()
+    try {
+      await api.familyMembers.delete(familyMember.id)
+      toast.success(`${familyMember.firstName} ${familyMember.lastName} removed.`)
+      await refresh()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   function sortByStartTime(lessons: Lesson[]) {
@@ -393,6 +416,12 @@ export function StudentsPanel() {
         <TableBody>
           {loading ? (
             showSkeleton ? <TableSkeletonRows columns={3} /> : null
+          ) : loadError ? (
+            <TableRow>
+              <TableCell colSpan={3}>
+                <LoadErrorBanner message={`Couldn't load students: ${loadError}`} onRetry={load} />
+              </TableCell>
+            </TableRow>
           ) : (
             <>
               {visibleStudents.map((s) => (

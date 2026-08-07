@@ -3,6 +3,7 @@ import { Repeat, Trash2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api'
 import type { BusinessHours, Instructor, Lesson, LessonStatus, LessonType, Student } from '../../shared/types'
+import { LoadErrorBanner } from './LoadErrorBanner'
 import { RecurringLessonDeleteDialog } from './RecurringLessonDeleteDialog'
 import { TableSkeletonRows } from './TableSkeletonRows'
 import { useDelayedFlag } from '@/hooks/useDelayedFlag'
@@ -82,6 +83,11 @@ export function SchedulePanel() {
   const [notes, setNotes] = useState('')
   const [repeatsWeekly, setRepeatsWeekly] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Covers only the students/instructors/businessHours lists — the schedule
+  // table's own load failures are tracked separately by lessonsLoadError,
+  // since refreshLessons() already races on lessonsRequestIdRef.
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [lessonsLoadError, setLessonsLoadError] = useState<string | null>(null)
   const [lessonsLoading, setLessonsLoading] = useState(true)
   const [hasLoadedLessons, setHasLoadedLessons] = useState(false)
   // Only the very first load shows a skeleton — once we have lessons on
@@ -110,6 +116,10 @@ export function SchedulePanel() {
       if (requestId !== lessonsRequestIdRef.current) return // a newer request already landed
       setLessons(result)
       setLessonsDate(requestedDate)
+      setLessonsLoadError(null)
+    } catch (err) {
+      if (requestId !== lessonsRequestIdRef.current) return
+      setLessonsLoadError(getErrorMessage(err))
     } finally {
       if (requestId === lessonsRequestIdRef.current) {
         setLessonsLoading(false)
@@ -118,12 +128,19 @@ export function SchedulePanel() {
     }
   }
 
-  useEffect(() => {
+  function loadFormData() {
+    setLoadError(null)
     // Archived students/instructors are kept out of scheduling entirely —
     // they're only reachable via the "Show archived" toggle in their panels.
-    api.students.list().then((list) => setStudents(list.filter((s) => s.active)))
-    api.instructors.list().then((list) => setInstructors(list.filter((i) => i.active)))
-    api.businessHours.list().then(setBusinessHours)
+    Promise.all([
+      api.students.list().then((list) => setStudents(list.filter((s) => s.active))),
+      api.instructors.list().then((list) => setInstructors(list.filter((i) => i.active))),
+      api.businessHours.list().then(setBusinessHours),
+    ]).catch((err) => setLoadError(getErrorMessage(err)))
+  }
+
+  useEffect(() => {
+    loadFormData()
   }, [])
 
   useEffect(() => {
@@ -204,8 +221,12 @@ export function SchedulePanel() {
   }
 
   async function handleStatus(id: string, status: LessonStatus) {
-    await api.lessons.updateStatus(id, status)
-    await refreshLessons()
+    try {
+      await api.lessons.updateStatus(id, status)
+      await refreshLessons()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   const {
@@ -231,9 +252,16 @@ export function SchedulePanel() {
       skipNextBlurSaveRef.current = false
       return
     }
-    setEditingNotesId(null)
-    await api.lessons.update(id, { notes: notesDraft.trim() || null })
-    await refreshLessons()
+    // Closing the editor before the write resolved used to discard the typed
+    // note silently on failure (the input disappeared, and the only feedback
+    // was the generic global toast). Keep it open until the save succeeds.
+    try {
+      await api.lessons.update(id, { notes: notesDraft.trim() || null })
+      setEditingNotesId(null)
+      await refreshLessons()
+    } catch (err) {
+      toast.error(getErrorMessage(err))
+    }
   }
 
   // Used for the "closed" banner, which should react to the calendar
@@ -255,6 +283,12 @@ export function SchedulePanel() {
   return (
     <div className="panel">
       <h2 className="mb-3 text-lg font-semibold">Schedule</h2>
+      {loadError && (
+        <LoadErrorBanner
+          message={`Couldn't load students/instructors/hours: ${loadError}`}
+          onRetry={loadFormData}
+        />
+      )}
 
       <div className="flex gap-4">
         <div className="w-72 shrink-0 rounded-lg border border-border bg-card p-3">
@@ -359,6 +393,15 @@ export function SchedulePanel() {
             <TableBody>
               {lessonsLoading && !hasLoadedLessons ? (
                 showLessonsSkeleton ? <TableSkeletonRows columns={5} /> : null
+              ) : lessonsLoadError ? (
+                <TableRow>
+                  <TableCell colSpan={5}>
+                    <LoadErrorBanner
+                      message={`Couldn't load this day's schedule: ${lessonsLoadError}`}
+                      onRetry={refreshLessons}
+                    />
+                  </TableCell>
+                </TableRow>
               ) : (
                 <>
                   {scheduleRows.map((row) =>

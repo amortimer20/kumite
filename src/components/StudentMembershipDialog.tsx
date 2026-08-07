@@ -21,6 +21,7 @@ import {
   filterPaymentsByRange,
 } from '@/lib/paymentHistoryFilter'
 import { getErrorMessage } from '@/lib/errors'
+import { LoadErrorBanner } from './LoadErrorBanner'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -72,6 +73,10 @@ export function StudentMembershipDialog({
   const [paymentHistory, setPaymentHistory] = useState<MembershipPaymentWithPlan[]>([])
   const [historyRange, setHistoryRange] = useState(DEFAULT_PAYMENT_HISTORY_RANGE)
   const [loading, setLoading] = useState(true)
+  // An uncaught load failure used to leave `membership` at its cleared-on-open
+  // null and render the "doesn't have a membership yet" assign form — a
+  // confident lie when the real state is just "failed to load."
+  const [loadError, setLoadError] = useState<string | null>(null)
   // Bumped on every refresh so a slow response for a student who is no longer
   // on screen is dropped rather than applied. Without it, switching from a
   // student with a long payment history to another lands the first student's
@@ -145,9 +150,9 @@ export function StudentMembershipDialog({
     return m
   }
 
-  useEffect(() => {
-    if (!student) return
+  function load(s: Student) {
     setLoading(true)
+    setLoadError(null)
     // Clear the previous student's figures immediately so a failed or slow
     // load can never leave them showing under the newly-opened student's name.
     setMembership(null)
@@ -162,16 +167,25 @@ export function StudentMembershipDialog({
     setHistoryRange(DEFAULT_PAYMENT_HISTORY_RANGE)
     // refresh() bumps requestIdRef synchronously, so reading it right after
     // captures this load's id for guarding the plans/loading updates too.
-    const loadPromise = Promise.all([refresh(student.id), api.membershipPlans.list()])
+    const loadPromise = Promise.all([refresh(s.id), api.membershipPlans.list()])
     const requestId = requestIdRef.current
     loadPromise
       .then(([, allPlans]) => {
         if (requestId !== requestIdRef.current) return
         setPlans(allPlans.filter((p) => p.active))
       })
+      .catch((err) => {
+        if (requestId !== requestIdRef.current) return
+        setLoadError(getErrorMessage(err))
+      })
       .finally(() => {
         if (requestId === requestIdRef.current) setLoading(false)
       })
+  }
+
+  useEffect(() => {
+    if (!student) return
+    load(student)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [student?.id])
 
@@ -415,6 +429,11 @@ export function StudentMembershipDialog({
 
         {loading ? (
           <p className="text-sm italic text-muted-foreground">Loading…</p>
+        ) : loadError ? (
+          <LoadErrorBanner
+            message={`Couldn't load this student's membership: ${loadError}`}
+            onRetry={() => student && load(student)}
+          />
         ) : (
           <div className="flex flex-col gap-5">
             {!membership ? (
