@@ -27,19 +27,6 @@ The data-loss/startup blockers and the money-correctness findings from that revi
 Done). These are the rest, kept in one place so they don't get lost. Roughly in the order worth
 tackling.
 
-### The installer still ships bundled libraries a second time
-Partly addressed: moving the build-only packages to `devDependencies` and cleaning `dist-electron`
-between builds took `app.asar` from 243 MB to 81 MB and the DMG from 160 MB to 128 MB. What remains is
-that `date-fns`, `lucide-react`, `@radix-ui`, `react-day-picker` and `pdf-lib` are each shipped as raw
-source *as well as* being bundled by Vite into `dist/assets` (renderer) or `main.js` (main) — around
-11,500 files that are never loaded, because `vite.config.ts` marks only `better-sqlite3` and
-`@prisma/adapter-better-sqlite3` as external. They can't simply move to `devDependencies` without
-lying about what the app depends on, so the honest fix is an explicit `files` allowlist in
-`electron-builder.json5` that packages only those two externals and their transitive deps. That needs
-care (better-sqlite3 pulls in `bindings`, `prebuild-install` and friends) and a verified launch
-afterwards, which is why it wasn't bundled into the quick pass. Note the DMG will never drop far below
-~100 MB regardless: Electron's own framework is ~96 MB of it.
-
 ### Electron is 13 major versions behind and out of support
 `electron@30.5.1` against 43.x current. Electron supports roughly the latest three majors, so 30 is
 well past EOL and carries unpatched Chromium and Node CVEs. Mitigating factor: the app loads only
@@ -56,21 +43,42 @@ story rather than a bare rename. Best done before the studio has data worth movi
 (The `author`/`description` metadata and the 800x600 default window that used to be in this entry are
 both fixed.)
 
-### Smaller correctness and consistency items
-Grouped because none is worth its own entry. `EMPTY_ASSIGN_FORM` in `StudentMembershipDialog.tsx`
-evaluates `todayIso()` once at module load, so on a front-desk machine left running for days the
-default membership start date — the billing anchor — is stale; `StudentsPanel` already recomputes
-this at open time. (This one is folded into the non-traditional-fees work above, which defaults the
-assign start date to the 1st, so it'll be fixed there rather than on its own.) Server-side validation
-across the remaining handlers is done — see "Server-side validation on the handlers that lacked it" in
-Done. (Several items that used to be listed here are now done — see "Money
-inputs can no longer overflow the Int columns" in Done for the fat-fingered-price fix, and the
-`normalizeMethod`, duplicated-`isoDate`-helper and stale-`HelpPanel`-certificates-claim items were all
-resolved in earlier passes. The Vite template leftovers — the dead `main-process-message`, the one
-commented-out line, the default `/vite.svg` favicon and the two unused `public/electron-vite*.svg`
-files — are all removed too.)
-
 ## Done
+
+### The installer no longer ships bundled libraries a second time
+`electron-builder.json5`'s `files` list used to be just `["dist", "dist-electron"]` — which reads like
+an allowlist but isn't one, since electron-builder always additionally walks `package.json`
+"dependencies" and copies each one's real `node_modules` folder in regardless of what `files` says.
+Vite already inlines every one of those dependencies into `dist/assets` (renderer) or `dist-electron`
+(main) *except* `better-sqlite3` and `@prisma/adapter-better-sqlite3` (marked external in
+`vite.config.ts`, since a native module can't be bundled) — so `date-fns`, `lucide-react`,
+`@radix-ui`, `react-day-picker`, `pdf-lib`, and `better-sqlite3`'s own install-time tooling
+(`prebuild-install` and its whole fetch/decompress dependency tree) were all being packaged as raw,
+never-loaded source on top of the bundle that already contains them.
+
+The fix traces the *actual* runtime `require()` graph of the two real externals by hand, rather than
+trusting their declared dependencies (`better-sqlite3` declares `prebuild-install`, but that only runs
+during `npm install` to fetch a prebuilt binary — nothing at runtime calls it): `better-sqlite3` →
+`bindings` → `file-uri-to-path`, and `@prisma/adapter-better-sqlite3` → `@prisma/driver-adapter-utils`
+→ `@prisma/debug`. `files` now explicitly excludes all of `node_modules` and re-includes only those,
+plus — since `better-sqlite3`'s own package is 28 MB and only ~60 KB of that (`lib/`) plus one compiled
+binary are needed at runtime, the rest (`deps/`, the SQLite C source it was compiled from; `src/`, the
+addon's own C++; and most of `build/`, the compiler's intermediate object files) exist solely to
+produce that binary — an explicit narrower path for `better-sqlite3` itself (`package.json`, `lib/**/*`,
+and `build/Release/better_sqlite3.node` only).
+
+Verified end-to-end, not just by reading the config: a baseline packaged build measured `app.asar` at
+81 MB (matching the last release-hygiene pass) with 64 top-level `node_modules` packages and 12,496
+files inside it; after the change, the same build produced a 6.4 MB `app.asar` (down from 81 MB), a
+2.1 MB unpacked folder (down from 24 MB), a 101 MB DMG (down from 116 MB — Electron's own ~96 MB
+framework is the floor, as the original entry predicted), and exactly the four packages expected
+(`better-sqlite3`, `bindings`, `file-uri-to-path`, `@prisma`) across 69 files. Then the actual packaged
+`.app` binary — not the dev build — was launched directly (Playwright's `_electron.launch` pointed at
+`Kumite.app/Contents/MacOS/Kumite`) and exercised: the Students tab loaded real data through the
+trimmed `better-sqlite3`/`@prisma/adapter-better-sqlite3` stack, and the Certificates tab rendered
+correctly. `extraResources` (certificate templates, migrations) are a separate config block untouched
+by this change and were confirmed still present in the packaged output. Full gate (typecheck, lint,
+220 tests) passes; no test coverage added since this is packaging configuration, not application code.
 
 ### Most api.* failures are no longer silent
 The global `unhandledrejection` toast (see below) was the safety net; this closes the two gaps it

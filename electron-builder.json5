@@ -25,9 +25,37 @@
   "directories": {
     "output": "release/${version}"
   },
+  // Vite bundles every dependency straight into dist/dist-electron EXCEPT
+  // better-sqlite3 and @prisma/adapter-better-sqlite3 (marked external in
+  // vite.config.ts, since a native module can't be bundled) — so those two
+  // are the only packages Node needs to `require()` as real files on disk at
+  // runtime. Without this explicit list, electron-builder's default node_modules
+  // inclusion (it walks package.json "dependencies" regardless of what `files`
+  // says) packages every one of those dependencies as raw, never-loaded source
+  // a second time — date-fns, lucide-react, @radix-ui, react-day-picker, and
+  // pdf-lib alone were ~11,500 dead files. Traced by hand from each of the two
+  // externals' own `require()` calls, not by reading their full dependency
+  // trees (better-sqlite3 declares `prebuild-install`, but that only runs
+  // during `npm install` to fetch a prebuilt binary — nothing at runtime
+  // requires it): better-sqlite3 -> bindings -> file-uri-to-path, and
+  // @prisma/adapter-better-sqlite3 -> @prisma/driver-adapter-utils ->
+  // @prisma/debug. Re-verify this list (e.g. `npx asar list` on a fresh
+  // build) if either external's own dependencies ever change.
   "files": [
-    "dist",
-    "dist-electron"
+    "dist/**/*",
+    "dist-electron/**/*",
+    "!node_modules/**/*",
+    // Only lib/ (the JS) and the compiled addon are needed — deps/ (SQLite's
+    // own C source) and most of build/ (intermediate objects, Makefiles) exist
+    // solely to compile the addon, which already happened before packaging.
+    "node_modules/better-sqlite3/package.json",
+    "node_modules/better-sqlite3/lib/**/*",
+    "node_modules/better-sqlite3/build/Release/better_sqlite3.node",
+    "node_modules/bindings/**/*",
+    "node_modules/file-uri-to-path/**/*",
+    "node_modules/@prisma/adapter-better-sqlite3/**/*",
+    "node_modules/@prisma/driver-adapter-utils/**/*",
+    "node_modules/@prisma/debug/**/*"
   ],
   "extraResources": [
     {
