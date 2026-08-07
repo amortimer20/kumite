@@ -22,20 +22,32 @@ untested: do a real Windows build/install/upgrade pass to confirm it works as ex
 whether code-signing is worth it later (unsigned installs currently show a Windows "Unknown
 Publisher" SmartScreen warning — not a blocker, just rougher first impression).
 
-## From the pre-beta code review (not yet addressed)
-The data-loss/startup blockers and the money-correctness findings from that review are fixed (see
-Done). These are the rest, kept in one place so they don't get lost. Roughly in the order worth
-tackling.
-
-### Electron is 13 major versions behind and out of support
-`electron@30.5.1` against 43.x current. Electron supports roughly the latest three majors, so 30 is
-well past EOL and carries unpatched Chromium and Node CVEs. Mitigating factor: the app loads only
-local files, renders no remote content, and has no external links, so there's no obvious delivery
-path — this is why it's here and not in the blockers. Still worth scheduling, and the upgrade will
-want a `better-sqlite3` rebuild and a check of the `sandbox`/preload behaviour described below.
-
+## From the pre-beta code review
+Every item from that review is now fixed — see Done. The checklist is closed.
 
 ## Done
+
+### Electron upgraded from 30 (EOL) to 43 (current)
+`electron@30.5.1` was 13 majors behind and long past end-of-life, carrying unpatched Chromium and
+Node CVEs. Bumped to `electron@43.3.0`, and `electron-builder@24.13.3 → 26.15.3` alongside (builder 24
+predates Electron 43 and can't package it). `@electron/rebuild` was already current and rebuilt
+`better-sqlite3` against E43's Node ABI automatically via the existing `postinstall`/`test` scripts.
+
+One config gap surfaced and was fixed: the dependency-tree change dropped a transitive package that had
+been silently augmenting the global TypeScript lib, exposing that `tsconfig.json` declared
+`lib`/`target` as `ES2020` while the code already used `Array.prototype.at` (ES2022). Bumped both to
+`ES2022` — Electron 43's bundled Node is far past that, so no downlevel concern.
+
+The specific risk the old backlog entry flagged — ESM preload (`preload.mjs`) under Electron's
+default-on sandbox — was verified clean: launched the E43 build and confirmed `contextBridge` still
+exposes `window.api` (object, 15 keys) with no preload/sandbox change needed. Verified thoroughly, not
+just built: full gate (typecheck, lint, 220 tests) green on the new toolchain; drove the dev build
+through all 8 tabs plus real read/write IPC paths (`reports.generate`, `certificates.listAvailableRanks`,
+`studentMemberships.listActive`) with zero renderer console errors; then packaged a DMG and launched the
+actual packaged `.app` binary — migrations ran against a fresh userData DB, `students.list()` returned
+cleanly, correct `~/Library/Application Support/Kumite` path, zero console errors. The `files` allowlist
+still trims correctly under builder 26 (`app.asar` 6.4 MB, 4 runtime packages). DMG grew 101 MB → 124 MB,
+expected — E43's newer Chromium framework is larger than E30's. Done on branch `upgrade-electron-43`.
 
 ### User data no longer lives in a folder named after the package
 `app.getName()` read the package `name` field (`karate-app`), so the database landed in
